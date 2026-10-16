@@ -1,0 +1,8 @@
+# Archivo con errores deliberados, para probar el validador
+RADAR(S)
+MOV(X)
+IF RADAR(S) 0 THEN AMT(S)
+IF RADAR(S) > 0 THEN MOV(N)
+MISIL(3)
+DISPARAR
+MISIL(99,99)

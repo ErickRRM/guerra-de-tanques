@@ -1,0 +1,8 @@
+# Cazador — agresivo: explora, dispara y se acerca
+RADAR(S)
+IF RADAR(S) > 0 THEN AMT(S)
+RADAR(E)
+IF RADAR(E) > 0 THEN AMT(E)
+MOV(S)
+IF VIDA < 40 THEN RESTAURAR
+MOV(E)

@@ -1,0 +1,8 @@
+# Defensivo — siembra minas y se protege
+MINA
+MOV(N)
+RADAR(N)
+IF RADAR(N) > 0 THEN AMT(N)
+IF VIDA < 60 THEN ESCUDO
+MOV(O)
+IF VIDA < 30 THEN RESTAURAR

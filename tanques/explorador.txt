@@ -1,0 +1,8 @@
+# Explorador — recorre el tablero y dispara a lo que encuentra
+RADAR(O)
+IF RADAR(O) > 0 THEN AMT(O)
+MOV(O)
+RADAR(N)
+IF RADAR(N) > 0 THEN AMT(N)
+MOV(N)
+ESPERAR
