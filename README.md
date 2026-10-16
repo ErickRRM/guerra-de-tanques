@@ -14,13 +14,23 @@ UAEMéx. Semestre 2026-B.
 
 | Módulo | Estado |
 |---|---|
-| Modelo de datos | Terminado |
-| Intérprete y validador | Terminado |
+| Direcciones y coordenadas | Terminado |
+| Analizador léxico | Terminado |
+| Analizador sintáctico y validador | Terminado |
+| Configuración de la partida | Terminado |
 | Motor de simulación | Por implementar |
+| Vista de consola | Por implementar |
 | Interfaz gráfica | Por implementar |
 | Bitácora de partida | Por implementar |
 
-El avance detallado está en [`docs/BITACORA.md`](docs/BITACORA.md).
+El avance detallado está en [`docs/BITACORA.md`](docs/BITACORA.md) y las
+decisiones de diseño, con su motivo, en
+[`docs/DECISIONES.md`](docs/DECISIONES.md).
+
+```
+$ python3 -m pytest tests/ -q
+87 passed
+```
 
 ## Requisitos
 
@@ -68,6 +78,11 @@ cmp         := >  |  <  |  >=  |  <=  |  ==
 
 Cada instrucción consume exactamente un turno, incluida la que no produce
 efecto porque su condición resultó falsa.
+
+Las posiciones iniciales de los tanques se sortean, pero el orden de los
+turnos es rotativo: gira una posición en cada ronda, de modo que nadie
+conserva la ventaja de actuar primero y el escudo dura siempre lo mismo
+(ver [`docs/DECISIONES.md`](docs/DECISIONES.md)).
 
 | Instrucción | Efecto |
 |---|---|
@@ -117,27 +132,71 @@ N disminuye y    S aumenta y    E aumenta x    O disminuye x
 
 ```
 guerra-de-tanques/
-├── main.py                 punto de entrada
-├── config.json             parámetros de la partida
+├── main.py                       punto de entrada
+├── config.json                   parámetros de la partida
 ├── src/tanques/
-│   ├── modelo.py           estructuras compartidas
-│   ├── interprete.py       lectura y validación de programas
-│   ├── motor.py            reglas del juego          (pendiente)
-│   └── interfaz.py         ventana Tkinter           (pendiente)
-├── tanques/                programas de ejemplo
-├── tests/                  pruebas automáticas
-└── docs/                   documento de arquitectura y bitácora
+│   ├── config.py                 lectura y validación de config.json
+│   ├── lenguaje/                 el intérprete, en dos fases
+│   │   ├── tokens.py             categorías de token
+│   │   ├── lexico.py             análisis léxico
+│   │   ├── sintactico.py         análisis sintáctico y gramática
+│   │   ├── instrucciones.py      Instruccion, Condicion, Programa
+│   │   ├── errores.py            mensajes de error
+│   │   └── interprete.py         fachada de las dos fases
+│   ├── modelo/                   estado y reglas del juego
+│   │   └── direccion.py          direcciones y sus vectores
+│   ├── vista/                    presentación               (pendiente)
+│   └── controlador/              coordinación de la partida (pendiente)
+├── tanques/                      programas de ejemplo
+├── tests/                        pruebas automáticas
+└── docs/                         arquitectura, bitácora y decisiones
 ```
 
-Los tres módulos se comunican por estructuras de datos fijadas de antemano: el
-intérprete no conoce el tablero, el motor no conoce la interfaz y la interfaz
-no contiene reglas.
+Es Modelo–Vista–Controlador con una capa más, `lenguaje/`, porque el
+intérprete no pertenece al modelo del juego ni a su presentación: traduce
+archivos de texto antes de que la partida empiece.
+
+Las dependencias van en un solo sentido:
+
+```
+controlador/  →  modelo/, vista/, lenguaje/
+lenguaje/     →  modelo/     (solo necesita las direcciones)
+vista/        →  modelo/     (dibuja; no contiene reglas)
+modelo/       →  nada
+```
+
+La regla que más importa es que **el modelo no importa Tkinter**. Gracias a
+eso el motor se puede probar sin abrir una ventana y se pueden ejecutar cien
+partidas seguidas para medir el equilibrio del juego.
+
+### El intérprete
+
+| Fase | Entrada | Salida |
+|---|---|---|
+| Análisis léxico | una línea de texto | lista de tokens |
+| Análisis sintáctico | lista de tokens | una instrucción validada |
+
+El léxico recorre la línea carácter por carácter y clasifica cada pieza sin
+juzgar si el conjunto tiene sentido; el sintáctico comprueba que los tokens
+formen alguna producción de la gramática. La gramática completa está en el
+encabezado de `lenguaje/sintactico.py`.
 
 ## Configuración
 
-Todos los parámetros ajustables viven en `config.json`, incluida la **semilla
-aleatoria**: con la misma semilla, la partida se reproduce de forma idéntica.
-Sin eso no es posible depurar ni comparar resultados entre versiones.
+Todos los parámetros ajustables viven en `config.json`: tamaño del tablero,
+vida, munición, daños, y las cuatro reglas que el reglamento dejaba abiertas
+—modo del radar, orden de los turnos, armado de la mina y acreditación del
+choque—, cada una explicada en [`docs/DECISIONES.md`](docs/DECISIONES.md).
+
+Incluye también la **semilla aleatoria**: con la misma semilla, la partida se
+reproduce de forma idéntica. Sin eso no es posible depurar ni comparar
+resultados entre versiones.
+
+Para ver cómo está interpretando el programa un `config.json` editado a mano:
+
+```bash
+python3 main.py config
+```
 
 ## Equipo
 

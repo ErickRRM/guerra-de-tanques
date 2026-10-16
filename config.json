@@ -13,7 +13,14 @@
   },
   "restaurar_puntos": 20,
   "refaccion": { "minimo": 15, "maximo": 25 },
-  "mina_turnos_armado": 2,
+
+  "reglas": {
+    "modo_radar": "hibrido",
+    "orden_turnos": "rotativo",
+    "acredita_choque": "embestidor",
+    "mina": { "turnos_armado": 2, "medida": "turnos_propietario" }
+  },
+
   "tanques": [
     { "nombre": "cazador",    "programa": "tanques/cazador.txt",    "color": "#2E5E8C" },
     { "nombre": "defensivo",  "programa": "tanques/defensivo.txt",  "color": "#D97706" },

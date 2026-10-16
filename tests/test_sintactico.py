@@ -1,32 +1,29 @@
-"""Pruebas del intérprete.
+"""Pruebas del analizador sintáctico y del intérprete completo.
 
 El profesor evaluará el simulador cargando sus propios archivos .txt, de modo
-que la tolerancia del validador a variaciones de escritura es un requisito y
-no una comodidad. Esa es la razón de buena parte de estas pruebas.
+que la tolerancia a variaciones de escritura es un requisito y no una
+comodidad. Esa es la razón de buena parte de estas pruebas.
 """
-import sys
 from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-
-from tanques.interprete import analizar, cargar, formato_errores  # noqa: E402
-from tanques.modelo import Direccion, Fuente, Operador, Tipo  # noqa: E402
+from tanques.lenguaje import Fuente, Interprete, Operador, Tipo, formato_errores
+from tanques.modelo import Direccion
 
 RAIZ = Path(__file__).resolve().parents[1]
+I = Interprete()
 
 
 def prog(texto, ancho=8, alto=8):
     """Analiza un texto y exige que no haya errores."""
-    p, errores = analizar(texto, ancho=ancho, alto=alto)
+    p, errores = Interprete(ancho, alto).analizar(texto)
     assert errores == [], formato_errores(errores)
     return p.instrucciones
 
 
 def errores_de(texto, ancho=8, alto=8):
-    _, errores = analizar(texto, ancho=ancho, alto=alto)
-    return errores
+    return Interprete(ancho, alto).analizar(texto)[1]
 
 
 # ---------------------------------------------------------------- básicos
@@ -74,14 +71,11 @@ def test_tolera_espacios_de_sobra():
 
 def test_ignora_comentarios_y_lineas_vacias():
     texto = "# encabezado\n\nMOV(N)   # avanza\n\n# final\nESPERAR\n"
-    p = prog(texto)
-    assert [i.tipo for i in p] == [Tipo.MOV, Tipo.ESPERAR]
+    assert [i.tipo for i in prog(texto)] == [Tipo.MOV, Tipo.ESPERAR]
 
 
 def test_conserva_el_numero_de_linea_real():
-    texto = "# uno\n# dos\nMOV(N)\n\nESPERAR\n"
-    p = prog(texto)
-    assert [i.linea for i in p] == [3, 5]
+    assert [i.linea for i in prog("# uno\n# dos\nMOV(N)\n\nESPERAR\n")] == [3, 5]
 
 
 def test_tolera_fin_de_linea_de_windows_y_bom():
@@ -118,8 +112,7 @@ def test_todos_los_operadores(texto, op):
 
 
 def test_el_radar_negativo_es_una_condicion_valida():
-    i = prog("IF RADAR(O) < -1 THEN ESCUDO")[0]
-    assert i.condicion.valor == -1
+    assert prog("IF RADAR(O) < -1 THEN ESCUDO")[0].condicion.valor == -1
 
 
 @pytest.mark.parametrize("accion", ["AMT(N)", "MISIL(2,2)", "ESCUDO",
@@ -136,26 +129,37 @@ def test_acciones_no_admitidas_en_if(accion):
     assert "no permitida en IF" in errs[0].mensaje
 
 
+def test_la_condicion_evalua_correctamente():
+    c = prog("IF VIDA < 40 THEN RESTAURAR")[0].condicion
+    assert c.evalua(30) is True
+    assert c.evalua(40) is False
+
+
 # ---------------------------------------------------------------- errores
 def test_direccion_invalida():
     errs = errores_de("MOV(X)")
-    assert len(errs) == 1
-    assert "dirección inválida" in errs[0].mensaje
+    assert len(errs) == 1 and "dirección inválida" in errs[0].mensaje
 
 
 def test_instruccion_desconocida():
-    errs = errores_de("DISPARAR")
-    assert "desconocida o mal formada" in errs[0].mensaje
+    assert "desconocida o mal formada" in errores_de("DISPARAR")[0].mensaje
 
 
 def test_misil_mal_formado():
     assert "desconocida o mal formada" in errores_de("MISIL(3)")[0].mensaje
 
 
+def test_falta_el_parentesis():
+    assert errores_de("MOV N)")
+    assert errores_de("MOV(N")
+
+
+def test_sobra_texto_al_final_de_la_linea():
+    assert "desconocida o mal formada" in errores_de("MOV(N) ESPERAR")[0].mensaje
+
+
 def test_misil_fuera_del_tablero():
-    errs = errores_de("MISIL(99,99)")
-    assert "fuera del tablero" in errs[0].mensaje
-    # Dentro de un tablero mayor, la misma línea es válida.
+    assert "fuera del tablero" in errores_de("MISIL(99,99)")[0].mensaje
     assert prog("MISIL(99,99)", ancho=100, alto=100)[0].x == 99
 
 
@@ -165,8 +169,7 @@ def test_misil_respeta_el_tamano_configurado():
 
 
 def test_if_sin_operador():
-    errs = errores_de("IF RADAR(S) 0 THEN AMT(S)")
-    assert "IF inválida" in errs[0].mensaje
+    assert "IF inválida" in errores_de("IF RADAR(S) 0 THEN AMT(S)")[0].mensaje
 
 
 def test_if_sin_then():
@@ -178,13 +181,12 @@ def test_condicion_con_fuente_invalida():
 
 
 def test_reporta_todos_los_errores_no_solo_el_primero():
-    texto = "MOV(X)\nDISPARAR\nMISIL(3)\n"
-    errs = errores_de(texto)
-    assert [e.linea for e in errs] == [1, 2, 3]
+    assert [e.linea for e in errores_de("MOV(X)\nDISPARAR\nMISIL(3)\n")] == \
+        [1, 2, 3]
 
 
 def test_las_lineas_validas_no_se_pierden_cuando_hay_errores():
-    p, errs = analizar("MOV(N)\nDISPARAR\nESPERAR\n")
+    p, errs = I.analizar("MOV(N)\nDISPARAR\nESPERAR\n")
     assert len(errs) == 1
     assert [i.tipo for i in p.instrucciones] == [Tipo.MOV, Tipo.ESPERAR]
 
@@ -195,25 +197,24 @@ def test_archivo_vacio():
 
 
 def test_archivo_inexistente():
-    _, errs = cargar(RAIZ / "tanques" / "no_existe.txt")
-    assert "no existe" in errs[0].mensaje
+    assert "no existe" in I.cargar(RAIZ / "tanques" / "no_existe.txt")[1][0].mensaje
 
 
 # ---------------------------------------------------------------- archivos
 @pytest.mark.parametrize("nombre", ["cazador", "defensivo", "explorador"])
 def test_los_programas_de_ejemplo_son_validos(nombre):
-    p, errs = cargar(RAIZ / "tanques" / f"{nombre}.txt")
+    p, errs = I.cargar(RAIZ / "tanques" / f"{nombre}.txt")
     assert errs == [], formato_errores(errs)
     assert len(p) > 0
 
 
 def test_el_archivo_con_errores_los_reporta_todos():
-    _, errs = cargar(RAIZ / "tanques" / "con_errores.txt")
+    _, errs = I.cargar(RAIZ / "tanques" / "con_errores.txt")
     assert [e.linea for e in errs] == [3, 4, 5, 6, 7, 8]
 
 
 def test_formato_de_los_errores():
-    _, errs = cargar(RAIZ / "tanques" / "con_errores.txt")
+    _, errs = I.cargar(RAIZ / "tanques" / "con_errores.txt")
     salida = formato_errores(errs)
     assert salida.startswith("Errores de sintaxis, la partida no inicia:")
     assert "con_errores.txt, línea 3" in salida
@@ -225,6 +226,13 @@ def test_representacion_legible():
     assert str(prog("MISIL(3,5)")[0]) == "MISIL(3,5)"
     assert str(prog("IF VIDA < 40 THEN RESTAURAR")[0]) == \
         "IF VIDA < 40 THEN RESTAURAR"
+
+
+def test_el_programa_se_reinicia_al_agotarse():
+    p, _ = I.analizar("MOV(N)\nESPERAR\n")
+    assert str(p.en(0)) == "MOV(N)"
+    assert str(p.en(2)) == "MOV(N)"      # vuelve a la primera línea
+    assert str(p.en(3)) == "ESPERAR"
 
 
 def test_direcciones_opuestas():

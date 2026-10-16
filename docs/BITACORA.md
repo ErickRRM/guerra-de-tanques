@@ -112,7 +112,134 @@ atendió cada punto.
 ### Consecuencia sobre el código
 
 La sección 5.2 compromete una separación explícita entre análisis léxico y
-análisis sintáctico. El intérprete del paso 1 valida con expresiones regulares
-por línea, lo que cumple la misma función pero no exhibe las dos fases por
-separado. Queda pendiente reestructurarlo en `lexico.py` y `sintactico.py`
-para que el código corresponda a lo documentado.
+análisis sintáctico. El intérprete del paso 1 validaba con expresiones
+regulares por línea, lo que cumplía la misma función pero no exhibía las dos
+fases por separado. **Atendido en el paso 2**, que lo reescribió como
+`lexico.py` y `sintactico.py` dentro de la capa `lenguaje/`.
+
+---
+
+## Paso 2 — Arquitectura en capas, intérprete en dos fases y configuración
+
+**16 de octubre de 2026**
+
+### Qué se hizo
+
+Tres cosas, en este orden:
+
+1. Se reorganizó el proyecto en **cuatro capas** con dependencias en un solo
+   sentido, en lugar de los tres módulos planos del paso 1.
+2. Se reescribió el intérprete como **dos fases separadas** —análisis léxico y
+   análisis sintáctico— tal como se comprometió en la sección 5.2 del reporte.
+3. Se centralizaron todos los parámetros ajustables en `config.py` +
+   `config.json`, incluidas las cuatro reglas que quedaban abiertas.
+
+No se tocó el motor todavía: el paso 2 deja preparado el terreno para que el
+paso 3 solo tenga que escribir reglas de juego.
+
+### La arquitectura
+
+```
+lenguaje/   →  modelo/        (el intérprete solo necesita las direcciones)
+controlador/ →  modelo/, vista/, lenguaje/
+vista/      →  modelo/        (dibuja; no contiene reglas)
+modelo/     →  nada
+```
+
+Es el patrón Modelo–Vista–Controlador con una capa más, `lenguaje/`, porque el
+intérprete no es parte del modelo del juego ni de su presentación: es un
+traductor que existe antes de que la partida empiece.
+
+La regla que importa es que **el modelo no importa Tkinter**. Si lo hiciera,
+no se podría probar el motor sin abrir una ventana, ni ejecutar cien partidas
+seguidas para medir el equilibrio del juego. Por eso `vista/` definirá una
+interfaz abstracta y el controlador decidirá si usa la versión gráfica o la de
+consola.
+
+### Separación en dos fases
+
+| Fase | Archivo | Entrada | Salida |
+|---|---|---|---|
+| Léxico | `lenguaje/lexico.py` | una línea de texto | lista de tokens |
+| Sintáctico | `lenguaje/sintactico.py` | lista de tokens | una `Instruccion` |
+| Fachada | `lenguaje/interprete.py` | el archivo completo | `Programa` + errores |
+
+El analizador léxico recorre la línea carácter por carácter y clasifica cada
+pieza —palabra reservada, dirección, entero, operador relacional, paréntesis,
+coma— sin juzgar si el conjunto tiene sentido. El sintáctico recibe esos
+tokens y comprueba que formen alguna producción de la gramática, construyendo
+la instrucción.
+
+La gramática está escrita en el encabezado de `sintactico.py`, en la misma
+notación del reporte. Ninguna producción es recursiva: la única anidación
+posible es la acción dentro de un `IF`, que a su vez no admite otro `IF`. Por
+eso basta un descenso recursivo de un nivel, sin tabla de análisis.
+
+Lo que se gana con la separación, además de responder a la pregunta del
+profesor: los mensajes de error indican línea y columna, y una sola pieza mal
+escrita no invalida el resto de la línea.
+
+### Las cuatro reglas abiertas, resueltas
+
+Se resolvieron las cuatro preguntas que el paso 1 dejó pendientes. Cada una
+quedó como opción de `config.json` con un valor por omisión, y el motivo está
+escrito en [`DECISIONES.md`](DECISIONES.md).
+
+| Pregunta | Decisión | Clave |
+|---|---|---|
+| ¿Qué lectura usa `IF RADAR(dir)`? | Modo híbrido: el registro si existe, exploración en el momento si no | `reglas.modo_radar` |
+| Duración del escudo con orden sorteado | Se cambió el orden de turnos a rotativo; así el escudo dura siempre lo mismo | `reglas.orden_turnos` |
+| ¿Mina: dos rondas o dos turnos propios? | Dos turnos del propietario — que con el orden rotativo equivalen a dos rondas | `reglas.mina.medida` |
+| ¿A quién se acredita el choque? | Al embestidor, solo los 15 que causó | `reglas.acredita_choque` |
+
+La segunda merece una nota: la pregunta era sobre el escudo, pero la causa
+real era el sorteo del orden. Cambiar el orden a rotativo arregla el escudo y
+de paso quita la ventaja permanente del tanque que actuaba primero. Las
+posiciones iniciales siguen siendo aleatorias, como pidió el profesor.
+
+### Archivos
+
+```
+src/tanques/modelo/direccion.py      Direccion con sus vectores
+src/tanques/lenguaje/tokens.py       categorías de token y palabras reservadas
+src/tanques/lenguaje/lexico.py       análisis léxico
+src/tanques/lenguaje/sintactico.py   análisis sintáctico y gramática
+src/tanques/lenguaje/instrucciones.py  Instruccion, Condicion, Programa
+src/tanques/lenguaje/errores.py      mensajes de error en un solo lugar
+src/tanques/lenguaje/interprete.py   fachada de las dos fases
+src/tanques/config.py                Configuracion y lectura de config.json
+src/tanques/vista/                   (preparada, vacía)
+src/tanques/controlador/             (preparada, vacía)
+tests/test_lexico.py                 19 pruebas
+tests/test_sintactico.py             51 pruebas
+tests/test_config.py                 17 pruebas
+```
+
+Se eliminaron `modelo.py`, `interprete.py` y `test_interprete.py` del paso 1.
+`main.py` ganó la orden `config`, que imprime la configuración tal como la
+entiende el programa; sirve para comprobar que un `config.json` editado a mano
+se está leyendo como se cree.
+
+### Verificación
+
+```
+$ python3 -m pytest tests/ -q
+87 passed in 0.13s
+```
+
+Se comprobó además que la reescritura no cambió el comportamiento: los tres
+programas de ejemplo siguen dando el mismo número de instrucciones y
+`con_errores.txt` sigue reportando los mismos seis errores en las líneas 3 a 8,
+con los mismos mensajes.
+
+### Pendiente para el paso 3
+
+El motor de simulación, en `modelo/`: `tablero.py`, `entidades.py`,
+`acciones.py` —una clase por acción, para poder añadir instrucciones sin
+modificar el motor— y `motor.py` con el ciclo de ronda. Después la vista y el
+controlador.
+
+Queda por confirmar con el equipo la **fecha de entrega final**: una nota
+anterior dice 10 de noviembre y el cronograma del documento de arquitectura
+marca el 22. También sigue vacía la tabla de reparto de trabajo de ese
+documento.
