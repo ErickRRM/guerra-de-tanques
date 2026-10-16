@@ -92,3 +92,27 @@ del documento de arquitectura:
 
 Los cuatro pueden implementarse como opciones de `config.json` para no
 bloquear el avance, pero conviene fijar el valor por omisión.
+
+---
+
+## Correcciones al primer reporte
+
+**16 de octubre de 2026**
+
+Retroalimentación recibida del profesor sobre el primer entregable y cómo se
+atendió cada punto.
+
+| Observación | Corrección |
+|---|---|
+| Revisar ortografía, faltan acentos | Se corrigió el nombre del profesor en la portada («Omar Díaz González Boyer»), se completaron los campos que iban en blanco y se unificaron los acentos de la gramática. El cuerpo del texto ya estaba acentuado. |
+| El objetivo general no es el correcto | Se renombró a «Objetivo general» y «Objetivos específicos», se redactó en una sola oración con verbo, acción, contexto y finalidad, y se retiró el párrafo sobre aplicar conocimientos, que es justificación y no objetivo. |
+| ¿Van a construir un intérprete lexicográfico? | Se añadió la sección 5.2, «Naturaleza del intérprete», que responde que sí y describe las dos fases —análisis léxico y análisis sintáctico— junto con la gramática en notación BNF. |
+| No veo limitaciones de hardware, navegadores o SO | Se añadió la sección 4.3, «Limitaciones técnicas»: sistema operativo, entorno de ejecución, hardware mínimo, resolución de pantalla y la aclaración de que es una aplicación de escritorio, no web. |
+
+### Consecuencia sobre el código
+
+La sección 5.2 compromete una separación explícita entre análisis léxico y
+análisis sintáctico. El intérprete del paso 1 valida con expresiones regulares
+por línea, lo que cumple la misma función pero no exhibe las dos fases por
+separado. Queda pendiente reestructurarlo en `lexico.py` y `sintactico.py`
+para que el código corresponda a lo documentado.
