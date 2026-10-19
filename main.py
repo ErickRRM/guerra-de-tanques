@@ -4,7 +4,7 @@
     python3 main.py validar tanques/cazador.txt
     python3 main.py validar tanques/*.txt --detalle
     python3 main.py config
-    python3 main.py jugar [--semilla N] [--resumen]
+    python3 main.py jugar [--semilla N] [--resumen | --paso | --pausa S]
 """
 from __future__ import annotations
 
@@ -15,8 +15,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
 from tanques import config as cfg          # noqa: E402
-from tanques.controlador import preparar   # noqa: E402
+from tanques.controlador import ejecutar, preparar   # noqa: E402
 from tanques.lenguaje import Interprete, formato_errores   # noqa: E402
+from tanques.vista import VistaConsola   # noqa: E402
 
 RAIZ = Path(__file__).resolve().parent
 
@@ -96,22 +97,11 @@ def comando_jugar(args) -> int:
         print(formato_errores(errores))
         return 1
 
-    for evento in motor.eventos_iniciales():
-        print(evento)
-    eventos = motor.jugar()
-    if not args.resumen:
-        for evento in eventos:
-            print(evento)
-    else:
-        print(eventos[-1])
-
-    r = motor.resultado()
-    print()
-    print(f"Rondas jugadas     {r.rondas}")
-    print(f"Motivo             {r.motivo.value}")
-    for t in motor.estado().tanques:
-        print(f"  #{t.numero} {t.nombre:<12} vida {t.vida:>3}   "
-              f"daño infligido {t.dano_infligido:>4}")
+    color = False if args.sin_color else None
+    vista = VistaConsola(c.vida_inicial, color=color, resumen=args.resumen,
+                         paso=args.paso, pausa=args.pausa,
+                         limpiar=args.animar)
+    ejecutar(motor, vista)
     return 0
 
 
@@ -144,7 +134,15 @@ def main(argv=None) -> int:
     j.add_argument("--semilla", type=int, default=None,
                    help="sustituye la semilla de la configuración")
     j.add_argument("--resumen", action="store_true",
-                   help="muestra solo el resultado, sin los eventos")
+                   help="muestra solo el resultado, sin las rondas")
+    j.add_argument("--paso", action="store_true",
+                   help="espera Enter después de cada ronda")
+    j.add_argument("--pausa", type=float, default=0.0, metavar="SEG",
+                   help="segundos de espera entre rondas")
+    j.add_argument("--animar", action="store_true",
+                   help="redibuja en el mismo lugar (usar con --pausa)")
+    j.add_argument("--sin-color", action="store_true",
+                   help="no usa colores aunque la terminal los admita")
     j.set_defaults(func=comando_jugar)
 
     args = parser.parse_args(argv)

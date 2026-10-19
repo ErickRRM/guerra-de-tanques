@@ -19,7 +19,7 @@ UAEMéx. Semestre 2026-B.
 | Analizador sintáctico y validador | Terminado |
 | Configuración de la partida | Terminado |
 | Motor de simulación | Terminado |
-| Vista de consola | Por implementar |
+| Vista de consola | Terminado |
 | Interfaz gráfica | Por implementar |
 | Bitácora de partida | Por implementar |
 
@@ -29,7 +29,7 @@ decisiones de diseño, con su motivo, en
 
 ```
 $ python3 -m pytest tests/ -q
-145 passed
+164 passed
 ```
 
 ## Requisitos
@@ -56,10 +56,44 @@ vez, con su número de línea. Devuelve código de salida 1 si encontró alguno.
 Jugar una partida en la consola con los tanques de `config.json`:
 
 ```bash
-python3 main.py jugar                  # todos los eventos, turno por turno
-python3 main.py jugar --semilla 7      # otra semilla, otra partida
-python3 main.py jugar --resumen        # solo el resultado
+python3 main.py jugar                       # todas las rondas seguidas
+python3 main.py jugar --semilla 7           # otra semilla, otra partida
+python3 main.py jugar --paso                # Enter avanza una ronda; q sale
+python3 main.py jugar --pausa 0.3 --animar  # animada en el mismo lugar
+python3 main.py jugar --resumen             # solo el resultado
 ```
+
+Después de cada ronda se muestran sus eventos, el tablero y el panel de
+estado:
+
+```
+=== Ronda 3 =================================
+  #3 explorador  L4: MOV(O)
+      explorador avanza al O (8, 6) -> (7, 6)
+  #1 cazador  L4: RADAR(E)
+      cazador explora al E: pared a 2
+
+     1   2   3   4   5   6   7   8
+  1   .   .   .   .   .   .   .   .
+  2  2^   .   .   .   .   .   .   .
+  3   *   .   .   .   .   .   .   .
+  4   .   .   .   .   .   .  1>   .
+  ...
+
+#1 cazador     [##########] 100          minas 3 misiles 3 rep 1  daño    0  L4 RADAR(E)
+#2 defensivo   [##########] 100          minas 2 misiles 3 rep 1  daño    0  L4 RADAR(N)
+```
+
+| En el tablero | Significa |
+|---|---|
+| `1>` | tanque 1; la flecha es su cañón, que apunta a la última dirección usada |
+| `[1>]` | tanque 1 con el escudo activo |
+| `*` / `o` | mina armada / mina que aún no se arma |
+| `+` | refacción |
+
+Cada tanque se identifica por su número, y el color de `config.json` solo
+lo acompaña: sin color (`--sin-color`, una salida redirigida a archivo o la
+variable `NO_COLOR`) la partida se sigue igual.
 
 Ejecutar las pruebas:
 
@@ -158,9 +192,11 @@ guerra-de-tanques/
 │   │   ├── acciones.py           una clase por instrucción
 │   │   ├── eventos.py            lo que el motor publica
 │   │   └── motor.py              ciclo de ronda, daño y término
-│   ├── vista/                    presentación               (pendiente)
+│   ├── vista/                    presentación
+│   │   ├── base.py               contrato común de las vistas
+│   │   └── consola.py            tablero, panel y registro en texto
 │   └── controlador/              coordinación de la partida
-│       └── partida.py            carga los programas y crea el motor
+│       └── partida.py            crea el motor y lo conduce con la vista
 ├── tanques/                      programas de ejemplo
 ├── tests/                        pruebas automáticas
 └── docs/                         arquitectura, bitácora y decisiones

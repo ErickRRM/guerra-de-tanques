@@ -325,3 +325,84 @@ programas que no se estrellen.
 3. Una orden `torneo` que automatice el lote de 100 partidas.
 4. El escenario de referencia de la sección 7.2: diez rondas escritas a mano.
 5. Mejorar los programas de ejemplo para que no choquen con las paredes.
+
+---
+
+## Paso 4 — Vista de consola
+
+**19 de octubre de 2026**
+
+### Qué se hizo
+
+Se implementó la primera vista, la de consola, y con ella el contrato común
+que también cumplirá la interfaz Tkinter:
+
+```
+Vista.inicio(estado, eventos)    la partida está colocada
+Vista.ronda(estado, eventos)     terminó una ronda; False si el usuario sale
+Vista.fin(estado, resultado)     la partida terminó (resultado None si se salió)
+```
+
+El controlador ganó `ejecutar(motor, vista)`, que juega ronda por ronda y le
+entrega a la vista el estado y los eventos. Ni el motor ni el controlador
+saben si del otro lado hay una consola o una ventana.
+
+### Lo que muestra
+
+Después de cada ronda: el registro de eventos, agrupado por turno bajo la
+instrucción que lo produjo; el tablero; y el panel de estado con la vida, la
+munición, el daño infligido y la línea en ejecución de cada tanque. Al final,
+el ganador, el motivo y la clasificación.
+
+Se aplicaron los criterios de la sección 6.1 del documento de arquitectura:
+
+| Criterio | Cómo se cumple en la consola |
+|---|---|
+| Codificación redundante | Cada tanque lleva su número; el color de `config.json` solo lo acompaña |
+| Estado siempre visible | El panel se redibuja completo en cada ronda |
+| Correspondencia directa | El mismo `#n` aparece en el tablero, el panel y el registro |
+| Orientación del cañón (fig. 8) | Una flecha junto al número: `1>`, `1^`, `<`, `v` |
+| Mina armada o no (fig. 9) | `*` armada, `o` sin armar |
+
+Todo se dibuja en ASCII porque la consola de Windows no garantiza los
+caracteres de caja. El color usa ANSI de 24 bits; en Windows se activa el
+modo de terminal virtual y, si no se puede, se dibuja sin color. Tampoco hay
+color si la salida va a un archivo o si existe la variable `NO_COLOR`.
+
+### Modos de `jugar`
+
+| Opción | Efecto |
+|---|---|
+| (ninguna) | Todas las rondas seguidas, una debajo de otra |
+| `--paso` | Espera Enter después de cada ronda; `q` sale |
+| `--pausa S --animar` | Animación: redibuja en el mismo lugar cada `S` segundos |
+| `--resumen` | Solo el tablero inicial, el final y el resultado |
+| `--sin-color` | Fuerza la salida sin color |
+
+### Archivos
+
+```
+src/tanques/vista/base.py          contrato abstracto Vista
+src/tanques/vista/consola.py       VistaConsola y las funciones de dibujo
+src/tanques/controlador/partida.py + ejecutar(motor, vista)
+tests/test_vista_consola.py        19 pruebas
+```
+
+Las funciones de dibujo (`dibujar_tablero`, `dibujar_panel`,
+`dibujar_eventos`) son puras: reciben el estado y devuelven texto. Por eso
+se prueban sin terminal, comparando casillas concretas del tablero dibujado.
+
+### Verificación
+
+```
+$ python -m pytest tests/ -q
+164 passed
+```
+
+### Pendiente para el paso 5
+
+1. La interfaz Tkinter, implementando el mismo contrato `Vista`.
+2. La bitácora de partida en archivo, a partir de los mismos eventos.
+3. Una orden `torneo` que automatice el lote de 100 partidas.
+4. El escenario de referencia de la sección 7.2: diez rondas escritas a mano.
+5. Mejorar los programas de ejemplo para que no choquen con las paredes.
