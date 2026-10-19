@@ -1,5 +1,6 @@
 """Capa de vista: presentación del estado de la partida."""
-from .base import Vista
+from .base import Vista, VistaMultiple
+from .bitacora import VistaBitacora
 from .consola import VistaConsola
 
-__all__ = ["Vista", "VistaConsola"]
+__all__ = ["Vista", "VistaMultiple", "VistaBitacora", "VistaConsola"]

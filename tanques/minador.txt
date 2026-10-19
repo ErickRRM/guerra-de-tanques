@@ -1,0 +1,15 @@
+# Minador — avanza hacia el este sembrando minas detrás de sí.
+# Siembra en su casilla y en la de abajo, y cada vuelta termina una columna
+# más al este: nunca vuelve a una columna que ya dejó, así que no pisa sus
+# propias minas. Al llegar a la pared oriental se queda ahí vigilando.
+MINA
+AMT(O)
+MOV(S)
+MINA
+AMT(S)
+MOV(E)
+RADAR(E)
+AMT(E)
+MOV(N)
+AMT(N)
+IF VIDA < 50 THEN ESCUDO
