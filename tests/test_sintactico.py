@@ -41,7 +41,7 @@ def test_las_cuatro_direcciones():
 
 def test_instrucciones_sin_parametros():
     for palabra, tipo in [("MINA", Tipo.MINA), ("ESCUDO", Tipo.ESCUDO),
-                          ("RESTAURAR", Tipo.RESTAURAR),
+                          ("REPARAR", Tipo.REPARAR),
                           ("ESPERAR", Tipo.ESPERAR)]:
         assert prog(palabra)[0].tipo is tipo
 
@@ -60,7 +60,7 @@ def test_danar_acepta_las_dos_grafias():
 def test_no_distingue_mayusculas():
     assert prog("mov(n)")[0].direccion is Direccion.N
     assert prog("Mov(N)")[0].tipo is Tipo.MOV
-    assert prog("if vida < 40 then restaurar")[0].tipo is Tipo.IF
+    assert prog("if vida < 40 then reparar")[0].tipo is Tipo.IF
 
 
 def test_tolera_espacios_de_sobra():
@@ -94,10 +94,10 @@ def test_if_con_radar():
 
 
 def test_if_con_vida():
-    i = prog("IF VIDA < 40 THEN RESTAURAR")[0]
+    i = prog("IF VIDA < 40 THEN REPARAR")[0]
     assert i.condicion.fuente is Fuente.VIDA
     assert i.condicion.direccion is None
-    assert i.accion.tipo is Tipo.RESTAURAR
+    assert i.accion.tipo is Tipo.REPARAR
 
 
 @pytest.mark.parametrize("texto,op", [
@@ -116,7 +116,7 @@ def test_el_radar_negativo_es_una_condicion_valida():
 
 
 @pytest.mark.parametrize("accion", ["AMT(N)", "MISIL(2,2)", "ESCUDO",
-                                    "RESTAURAR"])
+                                    "REPARAR"])
 def test_acciones_admitidas_en_if(accion):
     assert prog(f"IF VIDA > 0 THEN {accion}")[0].accion is not None
 
@@ -130,7 +130,7 @@ def test_acciones_no_admitidas_en_if(accion):
 
 
 def test_la_condicion_evalua_correctamente():
-    c = prog("IF VIDA < 40 THEN RESTAURAR")[0].condicion
+    c = prog("IF VIDA < 40 THEN REPARAR")[0].condicion
     assert c.evalua(30) is True
     assert c.evalua(40) is False
 
@@ -173,7 +173,7 @@ def test_if_sin_operador():
 
 
 def test_if_sin_then():
-    assert "IF inválida" in errores_de("IF VIDA < 40 RESTAURAR")[0].mensaje
+    assert "IF inválida" in errores_de("IF VIDA < 40 REPARAR")[0].mensaje
 
 
 def test_condicion_con_fuente_invalida():
@@ -224,8 +224,8 @@ def test_formato_de_los_errores():
 def test_representacion_legible():
     assert str(prog("MOV(N)")[0]) == "MOV(N)"
     assert str(prog("MISIL(3,5)")[0]) == "MISIL(3,5)"
-    assert str(prog("IF VIDA < 40 THEN RESTAURAR")[0]) == \
-        "IF VIDA < 40 THEN RESTAURAR"
+    assert str(prog("IF VIDA < 40 THEN REPARAR")[0]) == \
+        "IF VIDA < 40 THEN REPARAR"
 
 
 def test_el_programa_se_reinicia_al_agotarse():

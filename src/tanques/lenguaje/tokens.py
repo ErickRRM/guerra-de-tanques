@@ -26,7 +26,7 @@ class TipoToken(Enum):
 #: para que un teclado sin eñe no invalide el archivo.
 PALABRAS_RESERVADAS = frozenset({
     "MOV", "AMT", "RADAR", "DAÑAR", "DANAR", "MISIL", "MINA", "ESCUDO",
-    "RESTAURAR", "ESPERAR", "IF", "THEN", "VIDA",
+    "REPARAR", "ESPERAR", "IF", "THEN", "VIDA",
 })
 
 #: Operadores relacionales admitidos en la condición de un IF.

@@ -42,7 +42,7 @@ def direccion_invalida(texto: str) -> str:
 
 def accion_no_permitida(texto: str) -> str:
     return (f"acción no permitida en IF: {texto!r} "
-            "(admitidas: AMT, MISIL, ESCUDO, RESTAURAR)")
+            "(admitidas: AMT, MISIL, ESCUDO, REPARAR)")
 
 
 def if_invalido() -> str:

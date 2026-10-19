@@ -23,7 +23,7 @@ class Tipo(Enum):
     MISIL = "MISIL"
     MINA = "MINA"
     ESCUDO = "ESCUDO"
-    RESTAURAR = "RESTAURAR"
+    REPARAR = "REPARAR"
     ESPERAR = "ESPERAR"
     IF = "IF"
 
@@ -32,11 +32,11 @@ class Tipo(Enum):
 CON_DIRECCION = frozenset({Tipo.MOV, Tipo.AMT, Tipo.RADAR, Tipo.DANAR})
 
 #: Instrucciones sin parámetros.
-SIN_PARAMETROS = frozenset({Tipo.MINA, Tipo.ESCUDO, Tipo.RESTAURAR,
+SIN_PARAMETROS = frozenset({Tipo.MINA, Tipo.ESCUDO, Tipo.REPARAR,
                             Tipo.ESPERAR})
 
 #: Acciones admitidas dentro de un IF.
-ACCIONES_EN_IF = frozenset({Tipo.AMT, Tipo.MISIL, Tipo.ESCUDO, Tipo.RESTAURAR})
+ACCIONES_EN_IF = frozenset({Tipo.AMT, Tipo.MISIL, Tipo.ESCUDO, Tipo.REPARAR})
 
 
 class Fuente(Enum):

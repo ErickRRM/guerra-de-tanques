@@ -166,6 +166,54 @@ existió— pero vuelve el desempate sensible a ser embestido, que no es mérito
 
 ---
 
+## D-05 · Cuándo se pisa una mina
+
+**Decisión: al entrar a la casilla.** Una mina armada estalla cuando un
+tanque llega a su casilla con `MOV`. Quedarse encima no la detona.
+
+*Sin clave en `config.json`.*
+
+### El problema
+
+La mina se coloca en la casilla del propio tanque. Si la revisión de minas
+de la Figura 4 detonara cualquier mina armada bajo un tanque, el dueño que se
+queda quieto —por ejemplo, porque su `MOV` choca con la pared— volaría con su
+propia mina dos turnos después de ponerla.
+
+### Consecuencias
+
+- La revisión de minas sigue ocurriendo después de cada turno, como en la
+  figura; solo dispara si el tanque llegó a la casilla en ese turno.
+- La mina estalla y se retira aunque el daño no llegue a aplicarse.
+- **El escudo nunca cubre al pisar una mina.** Las minas solo se pisan en el
+  turno propio y el escudo caduca justo al empezar ese turno, así que el caso
+  «el escudo está activo cuando el tanque pisa una mina» de la sección 7.3
+  no puede darse. Queda una prueba que lo demuestra.
+
+---
+
+## D-06 · Casos borde de la sección 7.3, resueltos en el motor
+
+| Caso | Resolución |
+|---|---|
+| Un misil cae en una casilla con mina | La mina no se ve afectada: el misil solo daña tanques |
+| Mina sobre otra mina | No se coloca y no gasta munición; el turno se pierde |
+| Misil a la propia casilla | El tanque se daña a sí mismo; cuenta como autoinfligido, no se acredita |
+| `REPARAR` con la vida al máximo | No hace nada y **no gasta** el uso |
+| Refacción con la vida al máximo | Se recoge y se pierde |
+| Destruido sobre una refacción | No puede darse: entrar a la casilla ya la recoge. El motor igual deja una sola |
+| Muerte contra la pared | Deja refacción; el daño no se acredita a nadie |
+| El choque destruye al embestido | El embestidor no ocupa la casilla; ambos se quedan donde estaban |
+| Todos destruidos en el mismo turno | Desempatan por daño infligido los que cayeron en ese turno |
+| Partida con un solo tanque | Juega hasta el límite de rondas y gana por desempate |
+| Muere el dueño de una mina sin armar | Con `turnos_propietario` la mina pasa a armarse por rondas |
+
+El orden rotativo gira sobre la lista completa de tanques, vivos o no, y
+después descarta a los destruidos; así la rotación no se descoloca cuando
+alguno cae.
+
+---
+
 ## Pendiente de confirmar con el profesor
 
 Las cuatro decisiones de arriba son provisionales en el sentido de que

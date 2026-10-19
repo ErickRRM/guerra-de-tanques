@@ -17,7 +17,7 @@ descenso recursivo de un solo nivel, sin tabla de análisis.
                   | "VIDA" relacional entero
     accion       := "AMT" "(" direccion ")"
                   | "MISIL" "(" entero "," entero ")"
-                  | "ESCUDO" | "RESTAURAR"
+                  | "ESCUDO" | "REPARAR"
 """
 from __future__ import annotations
 
@@ -33,7 +33,7 @@ _CON_DIRECCION = {"MOV": Tipo.MOV, "AMT": Tipo.AMT, "RADAR": Tipo.RADAR,
 
 #: Palabras que forman una instrucción por sí solas.
 _SIN_PARAMETROS = {"MINA": Tipo.MINA, "ESCUDO": Tipo.ESCUDO,
-                   "RESTAURAR": Tipo.RESTAURAR, "ESPERAR": Tipo.ESPERAR}
+                   "REPARAR": Tipo.REPARAR, "ESPERAR": Tipo.ESPERAR}
 
 
 class ErrorAnalisis(Exception):
