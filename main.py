@@ -5,6 +5,9 @@
     python3 main.py validar tanques/*.txt --detalle
     python3 main.py config
     python3 main.py jugar [--semilla N] [--resumen | --paso | --pausa S]
+    python3 main.py jugar --bitacora
+    python3 main.py torneo [--partidas 100] [--csv lote.csv]
+    python3 main.py ventana
 """
 from __future__ import annotations
 
@@ -15,9 +18,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
 from tanques import config as cfg          # noqa: E402
-from tanques.controlador import ejecutar, preparar   # noqa: E402
+from tanques.controlador import (ejecutar, escribir_csv,   # noqa: E402
+                                 formato_resumen, jugar_torneo, preparar)
 from tanques.lenguaje import Interprete, formato_errores   # noqa: E402
-from tanques.vista import VistaConsola   # noqa: E402
+from tanques.vista import (VistaBitacora, VistaConsola,   # noqa: E402
+                           VistaMultiple)
+from tanques.vista.bitacora import ruta_por_omision   # noqa: E402
 
 RAIZ = Path(__file__).resolve().parent
 
@@ -101,8 +107,41 @@ def comando_jugar(args) -> int:
     vista = VistaConsola(c.vida_inicial, color=color, resumen=args.resumen,
                          paso=args.paso, pausa=args.pausa,
                          limpiar=args.animar)
+    bitacora = None
+    if args.bitacora is not None:
+        semilla = c.semilla if args.semilla is None else args.semilla
+        ruta = (Path(args.bitacora) if args.bitacora
+                else ruta_por_omision(RAIZ / "bitacoras", semilla))
+        bitacora = VistaBitacora(ruta, c, semilla)
+        vista = VistaMultiple(vista, bitacora)
     ejecutar(motor, vista)
+    if bitacora is not None:
+        print(f"\nBitácora guardada en {bitacora.ruta}")
     return 0
+
+
+# ------------------------------------------------------------------ torneo
+def comando_torneo(args) -> int:
+    """Juega un lote de partidas con semillas consecutivas."""
+    c = _configuracion(args.config)
+    semillas = range(args.desde, args.desde + args.partidas)
+    torneo, errores = jugar_torneo(c, RAIZ, semillas)
+    if errores:
+        print(formato_errores(errores))
+        return 1
+    print(formato_resumen(torneo))
+    if args.csv:
+        with open(args.csv, "w", encoding="utf-8", newline="") as f:
+            escribir_csv(torneo, f)
+        print(f"\nDetalle por partida en {args.csv}")
+    return 0
+
+
+# ----------------------------------------------------------------- ventana
+def comando_ventana(args) -> int:
+    """Abre la interfaz gráfica."""
+    from tanques.controlador.aplicacion import aplicacion   # importa Tkinter
+    return aplicacion(_configuracion(args.config), RAIZ)
 
 
 def main(argv=None) -> int:
@@ -143,6 +182,27 @@ def main(argv=None) -> int:
                    help="redibuja en el mismo lugar (usar con --pausa)")
     j.add_argument("--sin-color", action="store_true",
                    help="no usa colores aunque la terminal los admita")
+    j.add_argument("--bitacora", nargs="?", const="", default=None,
+                   metavar="RUTA",
+                   help="guarda la bitácora de la partida (por omisión en "
+                        "bitacoras/)")
+
+    t = sub.add_parser("torneo",
+                       help="juega un lote de partidas y resume el resultado")
+    t.add_argument("--config", default=str(RAIZ / "config.json"),
+                   help="archivo de configuración de la partida")
+    t.add_argument("--partidas", type=int, default=100,
+                   help="número de partidas (100 por omisión)")
+    t.add_argument("--desde", type=int, default=1, metavar="SEMILLA",
+                   help="primera semilla; las demás son consecutivas")
+    t.add_argument("--csv", metavar="RUTA",
+                   help="guarda una fila por partida en un archivo CSV")
+    t.set_defaults(func=comando_torneo)
+
+    w = sub.add_parser("ventana", help="abre la interfaz gráfica")
+    w.add_argument("--config", default=str(RAIZ / "config.json"),
+                   help="configuración con la que se llena el formulario")
+    w.set_defaults(func=comando_ventana)
     j.set_defaults(func=comando_jugar)
 
     args = parser.parse_args(argv)

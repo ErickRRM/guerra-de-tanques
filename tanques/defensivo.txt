@@ -1,8 +1,8 @@
-# Defensivo — siembra minas y se protege
-MINA
-MOV(N)
-RADAR(N)
+# Defensivo — torreta: no se mueve, vigila los cuatro lados y se protege
+# Quieto no puede chocar con la pared ni pisar minas.
 IF RADAR(N) > 0 THEN AMT(N)
-IF VIDA < 60 THEN ESCUDO
-MOV(O)
-IF VIDA < 30 THEN REPARAR
+IF RADAR(E) > 0 THEN AMT(E)
+IF RADAR(S) > 0 THEN AMT(S)
+IF RADAR(O) > 0 THEN AMT(O)
+IF VIDA < 50 THEN ESCUDO
+IF VIDA < 40 THEN REPARAR

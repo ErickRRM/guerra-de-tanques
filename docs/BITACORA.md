@@ -406,3 +406,287 @@ $ python -m pytest tests/ -q
 3. Una orden `torneo` que automatice el lote de 100 partidas.
 4. El escenario de referencia de la sección 7.2: diez rondas escritas a mano.
 5. Mejorar los programas de ejemplo para que no choquen con las paredes.
+
+---
+
+## Paso 5 — Interfaz gráfica, bitácora, torneo y escenario de referencia
+
+**19 de octubre de 2026**
+
+### Qué se hizo
+
+Los cinco pendientes del paso 4:
+
+1. La **interfaz Tkinter**, con las tres pantallas de los bosquejos.
+2. La **bitácora de partida** en archivo.
+3. La orden **`torneo`**, que automatiza el lote de partidas.
+4. El **escenario de referencia** de la sección 7.2.
+5. **Programas de ejemplo** que no se estrellan contra la pared.
+
+### Interfaz gráfica
+
+`python main.py ventana` abre una sola ventana que pasa por las tres
+pantallas de los bosquejos: el menú de inicio (fig. 10), la configuración
+(fig. 11) y la partida (fig. 12). Los sprites, los íconos y los colores
+siguen las figuras 6, 7 y 9; todo se dibuja con primitivas del Canvas, sin
+imágenes, así que el tablero escala con el tamaño de casilla.
+
+La ventana de partida implementa el mismo contrato `Vista` que la consola,
+y el controlador la conduce con el mismo `ejecutar()`. Para lograrlo, cada
+método espera la orden del usuario con `wait_variable`, que sigue atendiendo
+los eventos de Tk mientras espera. No hizo falta un segundo bucle de juego
+para la ventana.
+
+El contrato cambió en un punto: `Vista.inicio()` ahora puede devolver
+`False` para cancelar la partida antes de la primera ronda. En la ventana,
+la partida no empieza hasta pulsar «Iniciar» y se puede salir antes. Las
+vistas que devuelven `None` siguen funcionando igual.
+
+**Resolución.** El reporte promete funcionar a 1280 × 720. En vez de fijar
+un tamaño, la ventana mide lo que ocupan los controles y el panel con las
+fuentes reales del equipo, y el tablero se queda con el alto que sobra.
+Medido con cuatro tanques:
+
+| Pantalla y escala | Ventana | Casilla |
+|---|---|---|
+| 1920 × 1080 al 125 % | 1182 × 822 | 65 px |
+| 1440 × 900 al 125 % | cabe en 810 px de alto | 63 px |
+| 1280 × 720 al 100 % | 907 × 623 | 45 px |
+
+### Bitácora y torneo
+
+La bitácora es una vista más (`VistaBitacora`) y recibe los mismos eventos
+que la pantalla. Lleva la semilla y las reglas vigentes, lo necesario para
+reproducir la partida. `VistaMultiple` reparte la partida entre varias
+vistas a la vez. La ventana guarda cada partida en `bitacoras/`; en consola
+se pide con `jugar --bitacora`.
+
+`torneo` sigue la sección 8 del documento de arquitectura: separa las
+victorias por destrucción de las que se ganan por desempate, y el daño
+causado a rivales del autoinfligido. Con `--csv` guarda una fila por partida.
+
+### Escenario de referencia
+
+`tests/test_escenario_referencia.py` tiene tres tanques con posiciones fijas
+y las diez primeras rondas calculadas a mano, turno por turno, antes de
+correr el motor. El escenario pasa por ametralladora, misil bloqueado por el
+escudo, misil a una casilla vacía, `IF` falso por un límite exacto
+(`80 < 80`), una mina propia que se arma y estalla, una segunda mina,
+`REPARAR` y la rotación de turnos. **El motor coincidió con el cálculo a mano
+en las diez rondas al primer intento.**
+
+### Programas de ejemplo
+
+Se reescribieron los tres. Dos cambios de fondo:
+
+- **Recorridos cerrados.** `MOV` no se admite dentro de un `IF`, así que un
+  tanque no puede esquivar la pared al verla. La solución es que sus salidas
+  y vueltas se compensen: el cazador patrulla un cuadro de 2 × 2, el
+  explorador uno de 3 × 3 y el defensivo no se mueve. Si un tanque arranca
+  junto a la pared, choca un par de veces y su circuito queda corrido hacia
+  dentro para siempre.
+- **Sin `RADAR` suelto.** Con el modo híbrido (D-01), `IF RADAR(d)` explora
+  por su cuenta y con una lectura más fresca. El `RADAR` previo solo gastaba
+  un turno.
+
+Lote de 100 partidas, antes y después:
+
+| | Antes | Después |
+|---|---|---|
+| Daño autoinfligido por partida (los tres) | 194.2 | 5.9 |
+| Daño a rivales por partida (los tres) | 84.3 | 197.8 |
+| Rondas por partida, media | 86 | 179 |
+| Partidas decididas por desempate o empate | 1 | 75 |
+
+| Tanque | Victorias | Por destrucción | Por desempate |
+|---|---|---|---|
+| defensivo | 53 | 11 | 42 |
+| cazador | 23 | 8 | 15 |
+| explorador | 14 | 6 | 8 |
+
+Hay 10 empates.
+
+**Hallazgo nuevo:** con tanques que ya no se destruyen solos, el combate
+resulta lento. La mayoría de las partidas llega al límite de 200 rondas y
+la decide el desempate, justo el riesgo que la sección 8 asociaba a un
+máximo de rondas demasiado alto. La torreta defensiva gana sobre todo por
+desempate: dispara en cuatro direcciones sin moverse. Es una decisión de
+equilibrio para el equipo —más daño por disparo, un tablero más chico o
+menos rondas— y no se tocó `config.json`.
+
+### Un problema de las pruebas en Windows
+
+Las pruebas de la ventana fallaban de forma intermitente al crear la
+ventana de Tk («couldn't read file init.tcl: No error»). Se aisló la causa:
+ocurre solo cuando pytest captura la salida a nivel de descriptor de
+archivo. Con `--capture=sys` pasan siempre (seis corridas seguidas sin
+fallos), y quedó fijado en `pytest.ini`. Las pruebas de la ventana se saltan
+solas si no hay pantalla.
+
+### Archivos
+
+```
+src/tanques/vista/bitacora.py        VistaBitacora
+src/tanques/vista/base.py            + VistaMultiple; inicio() puede cancelar
+src/tanques/vista/sprites.py         tanques, minas y refacciones en Canvas
+src/tanques/vista/grafica.py         AppGrafica, configuración, VentanaPartida
+src/tanques/controlador/torneo.py    jugar_torneo, resumen y CSV
+src/tanques/controlador/aplicacion.py  flujo menú → configuración → partida
+tests/test_escenario_referencia.py   7 pruebas
+tests/test_bitacora_torneo.py        13 pruebas
+tests/test_grafica.py                15 pruebas
+pytest.ini                           captura de salida compatible con Tk
+tanques/*.txt                        cazador, defensivo y explorador nuevos
+```
+
+También se corrigió el cuarto color de reserva del motor: era `#B91C1C`,
+el rojo de la mina armada, y debía ser `#6D4C9F`, el del tanque 4.
+
+### Verificación
+
+```
+$ python -m pytest -q
+199 passed
+```
+
+### Pendiente
+
+1. Decidir con el equipo el ajuste de equilibrio que pide el hallazgo de
+   arriba y volver a medir con `torneo`.
+2. Confirmar con el profesor las decisiones D-01 a D-06.
+3. Empaquetar el ejecutable para la entrega.
+
+---
+
+## Paso 6 — Animaciones en la ventana de partida
+
+**19 de octubre de 2026**
+
+### Qué se hizo
+
+Hasta el paso 5 la ventana solo se redibujaba al final de cada ronda: un
+disparo, una mina o un choque no se veían ocurrir, solo su resultado. Ahora
+cada turno se anima.
+
+| Acción | Animación |
+|---|---|
+| Turno de un tanque | Recuadro amarillo; el cañón gira hacia la dirección que usa |
+| `AMT` | Ráfaga de tres balas trazadoras y chispas donde pega (tanque o pared) |
+| `MISIL` | Mira roja sobre la casilla, misil en arco con estela y explosión |
+| `MINA` | La mina sale del tanque y se asienta; pulso rojo al armarse |
+| Pisar una mina | Explosión grande |
+| `MOV` | El tanque se desliza; contra la pared rebota con chispas |
+| `DAÑAR` o choque | Se lanza contra el otro tanque y regresa |
+| `RADAR` | Haz verde; pulso rojo si encontró un tanque, gris si es la pared |
+| `ESCUDO` | Anillo azul que se expande |
+| Daño, curación, bloqueo | Cifra flotante: `−10` rojo, `+20` verde, «bloqueado» azul |
+| Destrucción | Explosión y humo; después aparece la refacción |
+| `IF` falso | Una ✗ gris |
+
+Además, una mina bajo un tanque se dibuja pequeña en la esquina de la
+casilla. Antes quedaba tapada y no se sabía que estaba ahí.
+
+### Cómo se hizo
+
+- **Un turno a la vez.** `Vista` ganó un método opcional, `turno()`, y
+  `ejecutar()` avanza con `motor.paso()` en vez de `motor.ronda()`. La
+  consola no lo implementa y sigue dibujando por rondas. La bitácora ahora
+  escribe por turnos, para que una partida interrumpida a media ronda quede
+  registrada hasta donde se jugó. El motor ganó la propiedad
+  `ronda_completa`.
+- **Las animaciones no deciden nada.** Se reproducen sobre el estado
+  anterior y al final se dibuja el estado real del turno. Si una animación
+  tuviera un error de cálculo, el tablero quedaría igual de correcto.
+- **Algunos eventos traen la dirección.** El motor añade `direccion` en
+  `datos` a la ráfaga sin blanco, al choque con la pared y al embiste al
+  vacío; sin ella no había forma de saber hacia dónde dibujarlos.
+- **`animaciones.py` no importa Tkinter.** Recibe el canvas y una función
+  `esperar(ms)`: en la ventana es `wait_variable` con un temporizador, de
+  modo que los botones responden durante la animación. Tk no tiene
+  transparencia; lo que se desvanece se mezcla con el color del fondo.
+- **Velocidad.** El deslizador también estira o acorta las animaciones. En
+  9 y 10 no se anima: avance rápido. «Pausar» ahora detiene la partida en el
+  siguiente turno, no al final de la ronda; «Una ronda» juega la ronda
+  completa sin detenerse entre turnos.
+
+### Verificación
+
+Se jugó con la ventana real un escenario de cuatro tanques que usa todas las
+acciones, capturando cuadros a media animación, y se revisaron las capturas.
+De esa revisión salió un ajuste: la mina recién puesta era demasiado pequeña
+y no se distinguía, así que ahora cae grande desde el tanque y termina con
+una onda roja.
+
+```
+$ python -m pytest -q
+221 passed
+```
+
+`tests/test_animaciones.py` (20 pruebas) comprueba que cada acción dispara
+su animación, que cada efecto borra lo que dibuja, que la animación se corta
+si el usuario sale y que la pausa a media ronda se detiene en el siguiente
+turno.
+
+---
+
+## Paso 7 — Partida de exhibición
+
+**19 de octubre de 2026**
+
+### Qué se hizo
+
+Con las animaciones del paso 6 quedó a la vista que los programas de ejemplo
+casi no hacían nada vistoso. Se midió en 50 partidas con `config.json`:
+
+| Por partida | Ejemplos actuales | Exhibición |
+|---|---|---|
+| `IF` falsos (✗ gris) | 324 | 34 |
+| Ráfagas (con o sin blanco) | 18 | 186 |
+| Barridos de radar | 0 | 50 |
+| Misiles | 0 | 5.8 |
+| Minas sembradas | 0 | 3 |
+| Choques entre tanques | 1.4 | 2.1 |
+| Tanques destruidos | 1.1 | 1.9 |
+| Rondas | 186 | 142 |
+
+Se añadieron cuatro tanques y `config_dinamico.json`, que los junta en un
+tablero de 6 × 6 con 150 rondas como máximo. Las reglas son las mismas de
+`config.json` (hay una prueba que lo comprueba); los tres programas de
+ejemplo y `config.json` no se tocaron.
+
+```
+python main.py ventana --config config_dinamico.json
+```
+
+### Lo que se aprendió del lenguaje
+
+- **`AMT(d)` a secas rinde lo mismo que `IF RADAR(d) > 0 THEN AMT(d)`.** El
+  `IF` también consume el turno: si no hay blanco, el turno se pierde de
+  todas formas. Disparar sin condición causa el mismo daño y además se ve.
+  De ahí salía casi todo el «aburrimiento» de los ejemplos.
+- **Las minas no se llevan con los recorridos cerrados.** Como `MOV` no cabe
+  en un `IF` y el programa se repite, un tanque que vuelve a su punto de
+  partida termina pisando la mina que dejó ahí. Por D-05 el escudo nunca lo
+  protege, y armar la mina tarda justo lo mismo que ir y volver. La única
+  forma de sembrar sin pisarse es avanzar sin regresar: el `minador` termina
+  cada vuelta una columna más al este. El precio es que, al llegar a la pared
+  oriental, choca contra ella en cada vuelta (37 puntos autoinfligidos por
+  partida), y si empieza a menos de dos columnas de esa pared puede pisar la
+  última mina que siembre ahí (0.6 veces por partida).
+- **Los misiles van a casillas fijas.** No hay coordenadas relativas: el
+  artillero apunta a (3,4) y la patrulla a (4,3). Si alguno empieza justo en
+  su casilla objetivo, se lo lanza a sí mismo. Está anotado en sus
+  comentarios.
+
+### Verificación
+
+Se jugó la exhibición en la ventana real (semilla 42, velocidad 5) y se
+revisaron capturas: ráfagas en las cuatro direcciones, radar, impactos,
+siembra y armado de minas, todo en las primeras seis rondas. A velocidad 5
+cada ronda de cuatro tanques dura unos 4 segundos, así que una partida
+completa toma varios minutos; entre 7 y 8 va el doble de rápido.
+
+```
+$ python -m pytest -q
+226 passed
+```

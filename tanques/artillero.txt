@@ -1,0 +1,14 @@
+# Artillero — torreta: barre con el radar, dispara a los cuatro lados y
+# lanza un misil por vuelta al centro del tablero, por donde más se pasa.
+# AMT sin IF: con o sin blanco gasta el mismo turno, y así siempre dispara.
+# El misil va a una casilla fija (no hay coordenadas relativas): si el
+# artillero empieza justo en (3,4), se lo lanza a sí mismo.
+RADAR(N)
+AMT(N)
+AMT(E)
+RADAR(S)
+AMT(S)
+AMT(O)
+MISIL(3,4)
+IF VIDA < 60 THEN ESCUDO
+IF VIDA < 40 THEN REPARAR

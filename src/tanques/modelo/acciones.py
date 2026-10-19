@@ -52,7 +52,7 @@ class Mover(Accion):
         if not motor.tablero.dentro(*destino):
             motor.emitir(TipoEvento.MOVIMIENTO,
                          f"{tanque.nombre} choca contra la pared al {d.name}",
-                         tanque, choque="pared")
+                         tanque, choque="pared", direccion=d.name)
             motor.aplicar_dano(tanque, motor.config.dano.choque_pared,
                                autor=None, origen="pared",
                                bloqueable=False)
@@ -85,12 +85,14 @@ class Ametralladora(Accion):
         if objetivo is None:
             motor.emitir(TipoEvento.SIN_EFECTO,
                          f"{tanque.nombre} dispara al {d.name} y no "
-                         f"alcanza a nadie", tanque)
+                         f"alcanza a nadie", tanque,
+                         arma="ametralladora", direccion=d.name)
             return
         motor.emitir(TipoEvento.DISPARO,
                      f"{tanque.nombre} dispara la ametralladora al {d.name} "
                      f"contra {objetivo.nombre}", tanque,
-                     arma="ametralladora", objetivo=objetivo.nombre)
+                     arma="ametralladora", objetivo=objetivo.nombre,
+                     direccion=d.name)
         motor.aplicar_dano(objetivo, motor.config.dano.ametralladora,
                            autor=tanque, origen="ametralladora")
 
@@ -163,7 +165,7 @@ class Embestir(Accion):
         if otro is None:
             motor.emitir(TipoEvento.SIN_EFECTO,
                          f"{tanque.nombre} embiste al {d.name} pero no hay "
-                         f"nadie", tanque)
+                         f"nadie", tanque, direccion=d.name)
             return
         motor.chocar(tanque, otro)
 

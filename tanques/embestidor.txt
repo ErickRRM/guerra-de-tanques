@@ -1,0 +1,17 @@
+# Embestidor — recorre su fila de ida y vuelta disparando hacia donde va.
+# Si alguien se le cruza en el camino, lo embiste: mover hacia un tanque ya
+# es un choque, sin gastar turnos en DAÑAR. La ida y la vuelta se compensan,
+# así que no se queda pegado a la pared.
+AMT(E)
+MOV(E)
+MOV(E)
+AMT(E)
+MOV(E)
+RADAR(E)
+AMT(O)
+MOV(O)
+MOV(O)
+AMT(O)
+MOV(O)
+RADAR(O)
+IF VIDA < 50 THEN ESCUDO

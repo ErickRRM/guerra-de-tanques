@@ -29,7 +29,7 @@ from .eventos import Evento, TipoEvento
 from .tablero import Posicion, Tablero
 
 #: Colores de reserva para tanques sin color en la configuración.
-_PALETA = ("#2E5E8C", "#D97706", "#0F766E", "#B91C1C")
+_PALETA = ("#2E5E8C", "#D97706", "#0F766E", "#6D4C9F")
 
 
 # ------------------------------------------------------------ resultado
@@ -152,6 +152,11 @@ class Motor:
     # ------------------------------------------------------- interfaz
     def terminada(self) -> bool:
         return self._resultado is not None
+
+    @property
+    def ronda_completa(self) -> bool:
+        """True si ya jugaron todos los tanques de la ronda en curso."""
+        return not self._pendientes
 
     def resultado(self) -> Optional[Resultado]:
         return self._resultado
