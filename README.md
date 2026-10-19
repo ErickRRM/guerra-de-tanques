@@ -18,7 +18,7 @@ UAEMéx. Semestre 2026-B.
 | Analizador léxico | Terminado |
 | Analizador sintáctico y validador | Terminado |
 | Configuración de la partida | Terminado |
-| Motor de simulación | Por implementar |
+| Motor de simulación | Terminado |
 | Vista de consola | Por implementar |
 | Interfaz gráfica | Por implementar |
 | Bitácora de partida | Por implementar |
@@ -29,7 +29,7 @@ decisiones de diseño, con su motivo, en
 
 ```
 $ python3 -m pytest tests/ -q
-87 passed
+145 passed
 ```
 
 ## Requisitos
@@ -53,6 +53,14 @@ python3 main.py validar tanques/*.txt --detalle
 El validador revisa el archivo completo y reporta **todos** los errores de una
 vez, con su número de línea. Devuelve código de salida 1 si encontró alguno.
 
+Jugar una partida en la consola con los tanques de `config.json`:
+
+```bash
+python3 main.py jugar                  # todos los eventos, turno por turno
+python3 main.py jugar --semilla 7      # otra semilla, otra partida
+python3 main.py jugar --resumen        # solo el resultado
+```
+
 Ejecutar las pruebas:
 
 ```bash
@@ -66,11 +74,11 @@ líneas vacías se ignoran y `#` marca un comentario.
 
 ```
 instruccion := MOV(d) | AMT(d) | RADAR(d) | DAÑAR(d)
-             | MISIL(x, y) | MINA | ESCUDO | RESTAURAR | ESPERAR
+             | MISIL(x, y) | MINA | ESCUDO | REPARAR | ESPERAR
              | IF condicion THEN accion
 
 condicion   := RADAR(d) cmp entero  |  VIDA cmp entero
-accion      := AMT(d) | MISIL(x, y) | ESCUDO | RESTAURAR
+accion      := AMT(d) | MISIL(x, y) | ESCUDO | REPARAR
 
 d           := N | S | E | O
 cmp         := >  |  <  |  >=  |  <=  |  ==
@@ -93,7 +101,7 @@ conserva la ventaja de actuar primero y el escudo dura siempre lo mismo
 | `DAÑAR(d)` | Embiste al tanque contiguo: 15 puntos a ambos |
 | `ESCUDO` | Inmunidad hasta el siguiente turno del tanque |
 | `RADAR(d)` | Distancia al primer elemento: positiva si es enemigo, negativa si es pared |
-| `RESTAURAR` | Recupera 20 puntos de vida. Un solo uso por partida |
+| `REPARAR` | Recupera 20 puntos de vida. Un solo uso por partida |
 | `ESPERAR` | No hace nada y cede el turno |
 | `VIDA` | Vida restante; solo dentro de una condición |
 | `IF ... THEN ...` | Ejecuta la acción si la condición se cumple |
@@ -105,7 +113,7 @@ Ejemplo (`tanques/cazador.txt`):
 RADAR(S)
 IF RADAR(S) > 0 THEN AMT(S)
 MOV(S)
-IF VIDA < 40 THEN RESTAURAR
+IF VIDA < 40 THEN REPARAR
 ```
 
 ### Tolerancias del validador
@@ -144,9 +152,15 @@ guerra-de-tanques/
 │   │   ├── errores.py            mensajes de error
 │   │   └── interprete.py         fachada de las dos fases
 │   ├── modelo/                   estado y reglas del juego
-│   │   └── direccion.py          direcciones y sus vectores
+│   │   ├── direccion.py          direcciones y sus vectores
+│   │   ├── tablero.py            límites y recorrido en línea recta
+│   │   ├── entidades.py          Tanque, Mina, Refaccion
+│   │   ├── acciones.py           una clase por instrucción
+│   │   ├── eventos.py            lo que el motor publica
+│   │   └── motor.py              ciclo de ronda, daño y término
 │   ├── vista/                    presentación               (pendiente)
-│   └── controlador/              coordinación de la partida (pendiente)
+│   └── controlador/              coordinación de la partida
+│       └── partida.py            carga los programas y crea el motor
 ├── tanques/                      programas de ejemplo
 ├── tests/                        pruebas automáticas
 └── docs/                         arquitectura, bitácora y decisiones
@@ -162,8 +176,12 @@ Las dependencias van en un solo sentido:
 controlador/  →  modelo/, vista/, lenguaje/
 lenguaje/     →  modelo/     (solo necesita las direcciones)
 vista/        →  modelo/     (dibuja; no contiene reglas)
-modelo/       →  nada
+modelo/       →  nada        (salvo config.py, que no depende de nadie)
 ```
+
+El motor reconoce las instrucciones por el nombre de su tipo, sin importar
+`lenguaje/`, y busca en `acciones.py` la clase que la ejecuta. Añadir una
+instrucción es escribir una clase nueva, sin tocar el motor.
 
 La regla que más importa es que **el modelo no importa Tkinter**. Gracias a
 eso el motor se puede probar sin abrir una ventana y se pueden ejecutar cien

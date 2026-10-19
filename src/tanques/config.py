@@ -83,7 +83,7 @@ class Dano:
 class Municion:
     minas: int = 3
     misiles: int = 3
-    restauraciones: int = 1
+    reparaciones: int = 1
 
 
 @dataclass(frozen=True)
@@ -109,7 +109,7 @@ class Configuracion:
     vida_inicial: int = 100
     municion: Municion = field(default_factory=Municion)
     dano: Dano = field(default_factory=Dano)
-    restaurar_puntos: int = 20
+    reparar_puntos: int = 20
     refaccion: Refaccion = field(default_factory=Refaccion)
     tanques: tuple[TanqueConfig, ...] = ()
 
@@ -170,11 +170,11 @@ def desde_diccionario(datos: dict) -> Configuracion:
         rondas_maximas=datos.get("rondas_maximas", 200),
         vida_inicial=datos.get("vida_inicial", 100),
         municion=Municion(mun.get("minas", 3), mun.get("misiles", 3),
-                          mun.get("restauraciones", 1)),
+                          mun.get("reparaciones", 1)),
         dano=Dano(dan.get("ametralladora", 10), dan.get("mina", 25),
                   dan.get("misil", 30), dan.get("choque_tanque", 15),
                   dan.get("choque_pared", 5)),
-        restaurar_puntos=datos.get("restaurar_puntos", 20),
+        reparar_puntos=datos.get("reparar_puntos", 20),
         refaccion=Refaccion(ref.get("minimo", 15), ref.get("maximo", 25)),
         tanques=tuple(
             TanqueConfig(t["nombre"], t["programa"], t.get("color", "#2E5E8C"))

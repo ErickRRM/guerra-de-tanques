@@ -11,4 +11,4 @@ Las dependencias van siempre en una sola dirección: el controlador conoce al
 modelo y a la vista; el modelo no conoce a ninguno de los dos.
 """
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"

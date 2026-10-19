@@ -243,3 +243,85 @@ Queda por confirmar con el equipo la **fecha de entrega final**: una nota
 anterior dice 10 de noviembre y el cronograma del documento de arquitectura
 marca el 22. También sigue vacía la tabla de reparto de trabajo de ese
 documento.
+
+---
+
+## Paso 3 — Motor de simulación
+
+**19 de octubre de 2026**
+
+### Qué se hizo
+
+Se implementó el motor en `modelo/` siguiendo el ciclo de ronda de la
+Figura 4 y el contrato de la sección 2.2 del documento de arquitectura:
+`paso()`, `ronda()`, `estado()`, `terminada()` y `resultado()`, más
+`jugar()` para correr la partida completa. El motor no imprime nada:
+devuelve eventos, que es lo que consumirán la bitácora y la interfaz.
+
+`main.py` ganó la orden `jugar`, que corre una partida en la consola con los
+tanques de `config.json`.
+
+### Archivos
+
+```
+src/tanques/modelo/tablero.py      límites y recorrido en línea recta
+src/tanques/modelo/entidades.py    Tanque, Mina, Refaccion
+src/tanques/modelo/eventos.py      Evento y sus tipos
+src/tanques/modelo/acciones.py     una clase por instrucción, con registro
+src/tanques/modelo/motor.py        ciclo de ronda, daño, minas y término
+src/tanques/controlador/partida.py carga los programas y crea el motor
+tests/test_motor.py                58 pruebas
+```
+
+### Cómo quedó la dependencia con `lenguaje/`
+
+El modelo no importa nada de `lenguaje/`: las acciones se buscan por
+`instruccion.tipo.name` y la condición del `IF` solo necesita `fuente`,
+`direccion` y `evalua()`. Así se respeta la regla «modelo → nada». La única
+excepción es `config.py`, que no depende de nadie y que todas las capas
+pueden leer.
+
+### Decisiones
+
+Se añadieron **D-05** (la mina se pisa al entrar) y **D-06** (resolución de
+los casos borde de la sección 7.3) en [`DECISIONES.md`](DECISIONES.md). La
+más llamativa: con las reglas actuales el escudo nunca puede estar activo al
+pisar una mina.
+
+### Verificación
+
+```
+$ python -m pytest tests/ -q
+145 passed
+```
+
+Las pruebas cubren las reglas de cada instrucción, las opciones de
+`config.json` de D-01 a D-04, los casos borde de la sección 7.3 y la
+reproducibilidad: la misma semilla da la misma partida evento por evento.
+
+### Primer lote de 100 partidas (semillas 1 a 100)
+
+| Tanque | Victorias | Daño infligido | Daño autoinfligido |
+|---|---|---|---|
+| cazador | 72 | 645 | 8255 |
+| defensivo | 22 | 4000 | 6390 |
+| explorador | 6 | 3780 | 4775 |
+
+99 partidas terminaron por destrucción y una por desempate; duraron 86
+rondas de media (de 45 a 118).
+
+El dato que importa es la última columna: **el daño autoinfligido es más del
+doble del causado a los rivales**. Es justo el síntoma que la sección 8 pedía
+vigilar: los programas de ejemplo se pasan la partida chocando contra las
+paredes, y el cazador gana sobre todo porque sobrevive, no porque ataque. No
+dice nada todavía sobre el equilibrio entre armas; primero hay que escribir
+programas que no se estrellen.
+
+### Pendiente para el paso 4
+
+1. La vista de consola y la interfaz Tkinter, alimentadas con
+   `Motor.estado()` y los eventos.
+2. La bitácora de partida en archivo, a partir de los mismos eventos.
+3. Una orden `torneo` que automatice el lote de 100 partidas.
+4. El escenario de referencia de la sección 7.2: diez rondas escritas a mano.
+5. Mejorar los programas de ejemplo para que no choquen con las paredes.
