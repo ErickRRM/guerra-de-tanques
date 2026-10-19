@@ -1,4 +1,4 @@
 """Capa de controlador: orquesta el modelo y la vista."""
-from .partida import preparar
+from .partida import ejecutar, preparar
 
-__all__ = ["preparar"]
+__all__ = ["ejecutar", "preparar"]
