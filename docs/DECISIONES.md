@@ -25,7 +25,7 @@ vigentes. Lo que dijo:
 | `DAÑAR` es consecuencia, no instrucción | Se quitó. El choque ocurre al moverse hacia un tanque |
 | `IF RADAR` no necesita un `RADAR` antes | `RADAR` solo existe en la condición y explora al evaluarse. Reemplaza **D-01** |
 | `ESCUDO` es configurable, como vida extra | Reserva de puntos que absorbe daño hasta agotarse. Reemplaza la inmunidad de un turno |
-| `MINA(v,h)` se lanza a la esquina contigua y se activa de inmediato | `rondas_armado = 0`; se puede configurar. Reemplaza **D-03** |
+| `MINA(esq)` (sin coma: `MINA(NE)`) se lanza a la esquina contigua y se activa de inmediato | `rondas_armado = 0`; se puede configurar. Reemplaza **D-03** |
 | Pasar sobre un tanque destruido repara de 15 a 35 | Es la «refacción» de antes con otro rango |
 | `REPARAR`: 20, configurable de 15 a 30, un uso | Se mantiene como instrucción además del cadáver |
 | Máximo 6 tanques | Se valida en `config.py` |

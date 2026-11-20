@@ -890,17 +890,19 @@ AYUDA = [
     ("m", "MOV(d)       avanza una casilla; pared o tanque: choque de 12"),
     ("m", "AMT(d)       5 al primer tanque en esa dirección (configurable)"),
     ("m", "MISIL(d)     como AMT pero el doble de daño; tres por partida"),
-    ("m", "MINA(N,E)    lanza una mina a la esquina; 1.5 veces la AMT; tres"),
+    ("m", "MINA(NE)     lanza una mina a la esquina; 1.5 veces la AMT; tres"),
     ("m", "ESCUDO       vida extra: absorbe 20 puntos hasta agotarse"),
     ("m", "REPARAR      +20 de vida; una vez por partida"),
     ("m", "ESPERAR      no hace nada"),
     ("m", "IF RADAR(d) > 0 THEN AMT(d)"),
-    ("m", "IF VIDA < 40 THEN REPARAR"),
+    ("m", "IF V < 40 THEN REPARAR"),
     ("", "Todo se escribe en mayúsculas, también las direcciones. RADAR(d) "
          "solo existe dentro de un IF: explora en ese momento y da la "
-         "distancia, positiva a un tanque y negativa a la pared. Dentro de "
-         "un IF solo se admiten AMT, MISIL, ESCUDO y REPARAR. Las esquinas "
-         "de MINA son (N,E), (N,O), (S,E) y (S,O). Las direcciones son N, "
+         "distancia, positiva a un tanque y negativa a la pared. V es la "
+         "variable con la vida del tanque. Después del THEN va cualquier "
+         "instrucción (MOV, AMT, MISIL, MINA, ESCUDO, REPARAR o ESPERAR), "
+         "pero no otro IF. Las esquinas "
+         "de MINA van sin coma: (NE), (NO), (SE) y (SO). Las direcciones son N, "
          "S, E y O; las coordenadas empiezan en 1 con la fila 1 al norte."),
     ("", "El daño no es una instrucción: lo causan las armas, las minas y "
          "los choques. En un choque entre tanques los dos reciben el daño."),

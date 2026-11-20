@@ -36,15 +36,15 @@ CON_DIRECCION = frozenset({Tipo.MOV, Tipo.AMT, Tipo.MISIL})
 #: Instrucciones sin parámetros.
 SIN_PARAMETROS = frozenset({Tipo.ESCUDO, Tipo.REPARAR, Tipo.ESPERAR})
 
-#: Acciones admitidas dentro de un IF.
-ACCIONES_EN_IF = frozenset({Tipo.AMT, Tipo.MISIL, Tipo.ESCUDO, Tipo.REPARAR})
+#: Acciones admitidas dentro de un IF: cualquier instrucción salvo otro IF.
+ACCIONES_EN_IF = frozenset(t for t in Tipo if t is not Tipo.IF)
 
 
 class Fuente(Enum):
     """Lo que puede evaluarse en la condición de un IF."""
 
     RADAR = "RADAR"
-    VIDA = "VIDA"
+    VIDA = "V"          # se escribe V: la variable con la vida del tanque
 
 
 class Operador(Enum):
@@ -69,7 +69,7 @@ _COMPARACIONES = {
 
 @dataclass(frozen=True)
 class Condicion:
-    """La condición de un IF: RADAR(dir) cmp n  o  VIDA cmp n."""
+    """La condición de un IF: RADAR(dir) cmp n  o  V cmp n."""
 
     fuente: Fuente
     operador: Operador
@@ -82,7 +82,7 @@ class Condicion:
 
     def __str__(self) -> str:
         izq = (f"RADAR({self.direccion.name})" if self.fuente is Fuente.RADAR
-               else "VIDA")
+               else "V")
         return f"{izq} {self.operador.value} {self.valor}"
 
 
@@ -103,7 +103,7 @@ class Instruccion:
         if self.tipo is Tipo.IF:
             return f"IF {self.condicion} THEN {self.accion}"
         if self.direccion2 is not None:
-            return (f"{self.tipo.value}({self.direccion.name},"
+            return (f"{self.tipo.value}({self.direccion.name}"
                     f"{self.direccion2.name})")
         if self.direccion is not None:
             return f"{self.tipo.value}({self.direccion.name})"

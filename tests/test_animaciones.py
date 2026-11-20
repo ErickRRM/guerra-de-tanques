@@ -148,7 +148,7 @@ def test_cada_accion_tiene_su_animacion(app):
         app,
         ("a", "AMT(E)\nMISIL(E)\nIF RADAR(S) > 0 THEN AMT(S)\nESCUDO",
          (1, 1)),
-        ("b", "MINA(S,E)\nESPERAR", (4, 1)),
+        ("b", "MINA(SE)\nESPERAR", (4, 1)),
         ("c", "ESPERAR\nMOV(N)", (5, 2)), vida_inicial=12)
     llamadas = espiar(v)
     guion(v, "una", "una", "una", "una", "salir")
@@ -217,7 +217,7 @@ def test_una_ronda_no_se_detiene_entre_turnos(app):
 def test_la_mina_bajo_un_tanque_se_ve(app):
     # b lanza la mina sobre a; sin armar, queda debajo de a.
     motor, v = partida(app, ("a", "ESPERAR", (3, 3)),
-                       ("b", "MINA(N,E)", (2, 4)), mina_rondas_armado=1)
+                       ("b", "MINA(NE)", (2, 4)), mina_rondas_armado=1)
     guion(v, "una", "salir")
     ejecutar(motor, v)
     assert v.canvas.find_withtag("en_3_3")

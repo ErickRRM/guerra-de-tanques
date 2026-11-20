@@ -170,15 +170,15 @@ Cada tanque se programa en un archivo de texto, una instrucción por línea. Las
 líneas vacías se ignoran y `#` marca un comentario.
 
 ```
-instruccion := MOV(d) | AMT(d) | MISIL(d) | MINA(v, h)
+instruccion := MOV(d) | AMT(d) | MISIL(d) | MINA(esq)
              | ESCUDO | REPARAR | ESPERAR
              | IF condicion THEN accion
 
-condicion   := RADAR(d) cmp entero  |  VIDA cmp entero
-accion      := AMT(d) | MISIL(d) | ESCUDO | REPARAR
+condicion   := RADAR(d) cmp entero  |  V cmp entero
+accion      := cualquier instrucción salvo otro IF
 
 d           := N | S | E | O
-v, h        := una norte-sur y una este-oeste: (N,E) (N,O) (S,E) (S,O)
+esq         := NE | NO | SE | SO   (sin coma: una norte-sur y una este-oeste)
 cmp         := >  |  <  |  >=  |  <=  |  ==
 ```
 
@@ -200,13 +200,13 @@ conserva la ventaja de actuar primero y el escudo dura siempre lo mismo
 | `MOV(d)` | Avanza una casilla. Contra la pared sufre 12; contra un tanque, choque de 12 a los dos |
 | `AMT(d)` | Ametralladora: daño base al primer tanque de esa dirección. Munición ilimitada |
 | `MISIL(d)` | En línea recta como `AMT`, con el doble de daño. Gasta munición aunque no alcance a nadie |
-| `MINA(v,h)` | Lanza una mina a la esquina contigua; desde (2,2), `MINA(N,O)` cae en (1,1). Se activa de inmediato y causa 1.5 veces la `AMT` |
+| `MINA(esq)` | Lanza una mina a la esquina contigua, escrita sin coma; desde (2,2), `MINA(NO)` cae en (1,1). Se activa de inmediato y causa 1.5 veces la `AMT` |
 | `ESCUDO` | Vida extra: absorbe daño hasta agotarse. Activarlo lo recarga, no lo acumula |
 | `REPARAR` | Recupera vida. Un solo uso por partida |
 | `RADAR(d)` | Solo en un `IF`: distancia al primer tanque (positiva) o a la pared (negativa) |
 | `ESPERAR` | No hace nada y cede el turno |
-| `VIDA` | Vida restante; solo dentro de una condición |
-| `IF ... THEN ...` | Ejecuta la acción si la condición se cumple |
+| `V` | Variable con la vida restante; solo dentro de una condición (`IF V < 50 ...`) |
+| `IF ... THEN ...` | Ejecuta la acción si la condición se cumple. La acción puede ser cualquier instrucción (`MOV`, `AMT`, `MISIL`, `MINA`, `ESCUDO`, `REPARAR`, `ESPERAR`), pero no otro `IF` |
 
 Ejemplo (`tanques/defensivo.txt`):
 
@@ -216,8 +216,8 @@ IF RADAR(N) > 0 THEN AMT(N)
 IF RADAR(E) > 0 THEN AMT(E)
 IF RADAR(S) > 0 THEN AMT(S)
 IF RADAR(O) > 0 THEN AMT(O)
-IF VIDA < 50 THEN ESCUDO
-IF VIDA < 40 THEN REPARAR
+IF V < 50 THEN ESCUDO
+IF V < 40 THEN REPARAR
 ```
 
 Además, pasar por encima de un tanque destruido repara de 15 a 35 puntos
@@ -245,9 +245,9 @@ de la partida. Fuera de rango, la partida no inicia.
 
 Consejos para escribir programas, que salen de medir cien partidas:
 
-- **Los recorridos deben volver a su punto de partida.** `MOV` no se admite
-  dentro de un `IF`, así que un tanque no puede esquivar la pared al verla;
-  si avanza siempre hacia el mismo lado, se pasa la partida chocando.
+- **Usa el radar para no chocar.** `MOV` se admite dentro de un `IF`, así
+  que un tanque puede esquivar la pared al verla:
+  `IF RADAR(N) < -1 THEN MOV(N)` solo avanza si hay espacio libre.
 - **`AMT(d)` a secas rinde lo mismo que `IF RADAR(d) > 0 THEN AMT(d)`.** El
   `IF` también gasta el turno, así que si no hay blanco se pierde igual; sin
   `IF` al menos se ve la ráfaga. Con `MISIL` es al revés: conviene el `IF`
@@ -261,8 +261,8 @@ Consejos para escribir programas, que salen de medir cien partidas:
 El profesor evaluará el simulador cargando sus propios archivos, así que el
 validador acepta variaciones razonables de escritura (pero no minúsculas):
 
-- Espacios de sobra (`MINA ( N , E )`)
-- Las dos direcciones de `MINA` en cualquier orden (`MINA(E,N)` = `MINA(N,E)`)
+- Espacios de sobra (`MINA ( NE )`)
+- La esquina de `MINA` en cualquier orden (`MINA(EN)` = `MINA(NE)`)
 - Finales de línea de Windows y marca BOM
 - Archivos guardados en UTF-8 o en Latin-1
 

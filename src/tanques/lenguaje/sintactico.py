@@ -10,18 +10,18 @@ descenso recursivo de un solo nivel, sin tabla de análisis.
 
     instruccion  := simple | condicional
     simple       := con-direccion "(" direccion ")"
-                  | "MINA" "(" direccion "," direccion ")"
+                  | "MINA" "(" esquina ")"
                   | sin-parametros
     con-direccion:= "MOV" | "AMT" | "MISIL"
     sin-parametros := "ESCUDO" | "REPARAR" | "ESPERAR"
     condicional  := "IF" condicion "THEN" accion
     condicion    := "RADAR" "(" direccion ")" relacional entero
-                  | "VIDA" relacional entero
-    accion       := "AMT" "(" direccion ")" | "MISIL" "(" direccion ")"
-                  | "ESCUDO" | "REPARAR"
+                  | "V" relacional entero
+    accion       := simple            (cualquier instrucción salvo otro IF)
+    esquina      := "NE" | "NO" | "SE" | "SO"
 
-Las dos direcciones de MINA forman una esquina: una norte-sur y una
-este-oeste, en cualquier orden (`MINA(N,E)` o `MINA(E,N)`).
+La esquina de MINA se escribe junta, sin coma: una letra norte-sur y una
+este-oeste (`MINA(NE)`). Se tolera el orden inverso (`MINA(EN)`).
 """
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ from ..modelo.direccion import Direccion
 from . import errores as err
 from .instrucciones import (ACCIONES_EN_IF, Condicion, Fuente, Instruccion,
                             Operador, Tipo)
-from .tokens import TipoToken, Token
+from .tokens import ESQUINAS, TipoToken, Token
 
 #: Palabras que introducen una instrucción con dirección.
 _CON_DIRECCION = {"MOV": Tipo.MOV, "AMT": Tipo.AMT, "MISIL": Tipo.MISIL}
@@ -39,6 +39,11 @@ _SIN_PARAMETROS = {"ESCUDO": Tipo.ESCUDO, "REPARAR": Tipo.REPARAR,
                    "ESPERAR": Tipo.ESPERAR}
 
 _NORTE_SUR = (Direccion.N, Direccion.S)
+
+
+def _canonica(esquina: str) -> str:
+    """'EN' -> 'NE': primero la letra norte-sur."""
+    return esquina if esquina[0] in "NS" else esquina[::-1]
 
 
 class ErrorAnalisis(Exception):
@@ -138,7 +143,7 @@ class AnalizadorSintactico:
 
     def _condicion(self) -> Condicion:
         token = self._actual
-        if token.es(TipoToken.PALABRA, "VIDA"):
+        if token.es(TipoToken.PALABRA, "V"):
             self._avanza()
             operador = self._relacional()
             return Condicion(fuente=Fuente.VIDA, operador=operador,
@@ -151,9 +156,13 @@ class AnalizadorSintactico:
             return Condicion(fuente=Fuente.RADAR, direccion=direccion,
                              operador=operador, valor=self._entero())
 
+        if token.es(TipoToken.PALABRA, "VIDA"):
+            raise ErrorAnalisis(err.vida_es_v())
         raise ErrorAnalisis(err.if_invalido())
 
     def _accion(self, linea: int) -> Instruccion:
+        if self._actual.es(TipoToken.PALABRA, "IF"):
+            raise ErrorAnalisis(err.if_anidado())
         inicio = self._i
         instruccion = self._simple(linea)
         if instruccion.tipo not in ACCIONES_EN_IF:
@@ -173,22 +182,23 @@ class AnalizadorSintactico:
         return Direccion.desde_texto(token.lexema)
 
     def _parentesis_esquina(self) -> tuple[Direccion, Direccion]:
-        """`(N,E)`: devuelve (norte-sur, este-oeste)."""
+        """`(NE)`: devuelve (norte-sur, este-oeste)."""
         if not self._acepta(TipoToken.PAR_IZQ):
             raise ErrorAnalisis(err.direcciones_mina(self._texto))
-        direcciones = []
-        for k in range(2):
-            if k and not self._acepta(TipoToken.COMA):
-                raise ErrorAnalisis(err.direcciones_mina(self._texto))
-            token = self._avanza()
-            if token.tipo is not TipoToken.DIRECCION:
-                raise ErrorAnalisis(err.direccion_invalida(token.lexema))
-            direcciones.append(Direccion.desde_texto(token.lexema))
+        token = self._avanza()
+        if (token.tipo is TipoToken.DIRECCION
+                and self._actual.tipo is TipoToken.COMA):
+            # la forma antigua MINA(N,E): se señala junto con su corrección
+            self._avanza()
+            par = token.lexema + self._actual.lexema
+            if par in ESQUINAS:
+                raise ErrorAnalisis(err.mina_con_coma(_canonica(par)))
+            raise ErrorAnalisis(err.direcciones_mina(self._texto))
+        if token.tipo is not TipoToken.ESQUINA:
+            raise ErrorAnalisis(err.direcciones_mina(self._texto))
         if not self._acepta(TipoToken.PAR_DER):
             raise ErrorAnalisis(err.direcciones_mina(self._texto))
-        a, b = direcciones
-        if (a in _NORTE_SUR) == (b in _NORTE_SUR):
-            raise ErrorAnalisis(err.direcciones_mina(self._texto))
+        a, b = (Direccion.desde_texto(c) for c in token.lexema)
         return (a, b) if a in _NORTE_SUR else (b, a)
 
     def _relacional(self) -> Operador:

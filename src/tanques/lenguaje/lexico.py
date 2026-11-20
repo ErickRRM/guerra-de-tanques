@@ -11,7 +11,7 @@ error léxico, no una variante de `MOV(N)`.
 from __future__ import annotations
 
 from .errores import ErrorSintaxis, caracter_invalido, en_minusculas
-from .tokens import (DIRECCIONES, PALABRAS_RESERVADAS, RELACIONALES, TipoToken,
+from .tokens import (DIRECCIONES, ESQUINAS, PALABRAS_RESERVADAS, RELACIONALES, TipoToken,
                      Token)
 
 COMENTARIO = "#"
@@ -110,6 +110,8 @@ class AnalizadorLexico:
         """
         if lexema in DIRECCIONES:
             return TipoToken.DIRECCION
+        if lexema in ESQUINAS:
+            return TipoToken.ESQUINA
         if lexema in PALABRAS_RESERVADAS:
             return TipoToken.PALABRA
         return TipoToken.PALABRA      # palabra no reconocida: lo dirá el parser

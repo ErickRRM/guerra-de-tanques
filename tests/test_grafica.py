@@ -155,7 +155,7 @@ def test_cerrar_la_ventana_termina_la_partida(app):
 
 @requiere_pantalla
 def test_el_tablero_dibuja_lo_que_dice_el_estado(app):
-    config, m = motor_de(("a", "MINA(S,E)\nESCUDO", (1, 1)),
+    config, m = motor_de(("a", "MINA(SE)\nESCUDO", (1, 1)),
                          ("b", "ESPERAR", (3, 3)), ("c", "MISIL(O)",
                                                     (8, 3)), vida_inicial=10,
                          mina_rondas_armado=3)

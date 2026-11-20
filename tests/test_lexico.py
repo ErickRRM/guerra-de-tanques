@@ -19,26 +19,26 @@ def test_reconoce_palabra_parentesis_y_direccion():
                                TipoToken.DIRECCION, TipoToken.PAR_DER]
 
 
-def test_reconoce_la_coma():
-    assert tipos("MINA(N,E)") == [
-        TipoToken.PALABRA, TipoToken.PAR_IZQ, TipoToken.DIRECCION,
-        TipoToken.COMA, TipoToken.DIRECCION, TipoToken.PAR_DER]
+def test_reconoce_la_esquina():
+    assert tipos("MINA(NE)") == [
+        TipoToken.PALABRA, TipoToken.PAR_IZQ, TipoToken.ESQUINA,
+        TipoToken.PAR_DER]
 
 
 def test_reconoce_los_enteros():
-    assert tipos("VIDA < 40")[2] is TipoToken.ENTERO
+    assert tipos("V < 40")[2] is TipoToken.ENTERO
 
 
 @pytest.mark.parametrize("op", [">", "<", ">=", "<=", "=="])
 def test_reconoce_los_operadores_relacionales(op):
-    t = tokenizar(f"VIDA {op} 10")
+    t = tokenizar(f"V {op} 10")
     assert t[1].tipo is TipoToken.RELACIONAL
     assert t[1].lexema == op
 
 
 def test_los_operadores_de_dos_caracteres_no_se_parten():
-    assert lexemas("VIDA >= 10") == ["VIDA", ">=", "10"]
-    assert lexemas("VIDA == 10") == ["VIDA", "==", "10"]
+    assert lexemas("V >= 10") == ["V", ">=", "10"]
+    assert lexemas("V == 10") == ["V", "==", "10"]
 
 
 def test_reconoce_enteros_negativos():
@@ -59,7 +59,7 @@ def test_una_palabra_desconocida_se_clasifica_como_palabra():
 
 # ---------------------------------------------------------------- normalización
 @pytest.mark.parametrize("texto", ["mov(N)", "MOV(n)", "Mov(N)",
-                                   "MINA(N,e)"])
+                                   "MINA(Ne)"])
 def test_las_minusculas_son_un_error(texto):
     _, errores = AnalizadorLexico().analizar(texto, 1)
     assert len(errores) == 1
