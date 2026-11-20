@@ -1,8 +1,19 @@
-# Explorador — recorre el tablero y dispara a lo que encuentra
-RADAR(O)
+# Explorador — recorre un cuadro de 3 x 3 y dispara a lo que encuentra
+# El recorrido vuelve a su punto de partida, así que no se estrella.
+MOV(O)
 IF RADAR(O) > 0 THEN AMT(O)
 MOV(O)
-RADAR(N)
 IF RADAR(N) > 0 THEN AMT(N)
 MOV(N)
-ESPERAR
+IF RADAR(E) > 0 THEN AMT(E)
+MOV(N)
+IF RADAR(N) > 0 THEN AMT(N)
+MOV(E)
+IF RADAR(S) > 0 THEN AMT(S)
+MOV(E)
+IF RADAR(E) > 0 THEN AMT(E)
+MOV(S)
+IF RADAR(O) > 0 THEN AMT(O)
+MOV(S)
+IF RADAR(S) > 0 THEN AMT(S)
+IF VIDA < 40 THEN REPARAR

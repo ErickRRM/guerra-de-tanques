@@ -36,10 +36,17 @@ def ejecutar(motor: Motor, vista: Vista) -> Optional[Resultado]:
 
     Devuelve el resultado, o None si el usuario salió antes del final.
     """
-    vista.inicio(motor.estado(), motor.eventos_iniciales())
-    while not motor.terminada():
-        eventos = motor.ronda()
-        if not vista.ronda(motor.estado(), eventos):
-            break
+    seguir = vista.inicio(motor.estado(), motor.eventos_iniciales())
+    seguir = seguir is not False
+    while seguir and not motor.terminada():
+        eventos = []
+        while seguir:                     # los turnos de una ronda
+            del_turno = motor.paso()
+            eventos += del_turno
+            seguir = vista.turno(motor.estado(), del_turno) is not False
+            if motor.ronda_completa:
+                break
+        if seguir:
+            seguir = vista.ronda(motor.estado(), eventos)
     vista.fin(motor.estado(), motor.resultado())
     return motor.resultado()

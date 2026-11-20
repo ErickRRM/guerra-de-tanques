@@ -170,6 +170,30 @@ def test_ametralladora_sin_objetivo():
     assert TipoEvento.SIN_EFECTO in tipos(m.paso())
 
 
+def test_los_eventos_dicen_hacia_donde_ocurren():
+    # La interfaz los necesita para animar la ráfaga o el golpe en la pared.
+    m = motor(("a", "AMT(N)\nMOV(N)\nAMT(E)", (1, 1)),
+              ("b", "ESPERAR", (4, 1)))
+    datos = []
+    for _ in range(3):
+        datos += [e.datos for e in m.ronda()
+                  if e.tanque == "a" and e.tipo in (TipoEvento.SIN_EFECTO,
+                                                    TipoEvento.MOVIMIENTO,
+                                                    TipoEvento.DISPARO)]
+    assert [d["direccion"] for d in datos] == ["N", "N", "E"]
+    assert datos[0]["arma"] == "ametralladora"
+    assert datos[2]["objetivo"] == "b"
+
+
+def test_ronda_completa():
+    m = motor(("a", "ESPERAR", (1, 1)), ("b", "ESPERAR", (8, 8)))
+    assert m.ronda_completa
+    m.paso()
+    assert not m.ronda_completa
+    m.paso()
+    assert m.ronda_completa
+
+
 def test_misil_gasta_municion_aunque_falle():
     m = motor(("a", "MISIL(5,5)", (1, 1)), ("b", "ESPERAR", (8, 8)))
     m.paso()

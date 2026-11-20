@@ -1,0 +1,19 @@
+# Patrulla — agresiva: patrulla un cuadro de 2 x 2 disparando a los cuatro
+# lados. Las salidas y vueltas se compensan, así que no se estrella.
+# AMT sin IF: con o sin blanco gasta el mismo turno, y así siempre dispara.
+# El misil va a una casilla fija (no hay coordenadas relativas): si la
+# patrulla empieza justo en (4,3), se lo lanza a sí misma.
+AMT(N)
+AMT(E)
+MOV(E)
+AMT(S)
+AMT(O)
+MOV(S)
+AMT(N)
+AMT(E)
+MOV(O)
+AMT(S)
+AMT(O)
+MOV(N)
+MISIL(4,3)
+IF VIDA < 40 THEN REPARAR

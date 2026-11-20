@@ -1,0 +1,16 @@
+# Cazador — agresivo: patrulla un cuadro de 2 x 2 disparando a los cuatro lados
+# Las salidas y vueltas se compensan, así que no se estrella contra la pared.
+# El IF explora por su cuenta (modo híbrido), sin gastar un turno en RADAR.
+AMT(N)
+AMT(E)
+MOV(E)
+IF RADAR(S) > 0 THEN AMT(S)
+MOV(S)
+IF RADAR(N) > 0 THEN AMT(N)
+IF RADAR(E) > 0 THEN AMT(E)
+MOV(O)
+IF RADAR(S) > 0 THEN AMT(S)
+AMT(O)
+MOV(N)
+IF VIDA < 40 THEN REPARAR
+MISIL(5,2)

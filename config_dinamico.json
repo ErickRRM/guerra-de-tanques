@@ -1,0 +1,30 @@
+{
+  "semilla": 42,
+  "tablero": { "ancho": 6, "alto": 6 },
+  "rondas_maximas": 150,
+  "vida_inicial": 100,
+  "municion": { "minas": 3, "misiles": 3, "reparaciones": 1 },
+  "dano": {
+    "ametralladora": 10,
+    "mina": 25,
+    "misil": 30,
+    "choque_tanque": 15,
+    "choque_pared": 5
+  },
+  "reparar_puntos": 20,
+  "refaccion": { "minimo": 15, "maximo": 25 },
+
+  "reglas": {
+    "modo_radar": "hibrido",
+    "orden_turnos": "rotativo",
+    "acredita_choque": "embestidor",
+    "mina": { "turnos_armado": 2, "medida": "turnos_propietario" }
+  },
+
+  "tanques": [
+    { "nombre": "artillero",  "programa": "tanques/artillero.txt",  "color": "#2E5E8C" },
+    { "nombre": "embestidor", "programa": "tanques/embestidor.txt", "color": "#D97706" },
+    { "nombre": "minador",    "programa": "tanques/minador.txt",    "color": "#0F766E" },
+    { "nombre": "patrulla",   "programa": "tanques/patrulla.txt",   "color": "#6D4C9F" }
+  ]
+}
