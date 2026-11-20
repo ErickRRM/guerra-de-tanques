@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from tanques import config as cfg
-from tanques.controlador import preparar
+from tanques.controlador import lineas_saltadas, preparar
 from tanques.lenguaje import Interprete, formato_errores
 from tanques.modelo import Direccion, Motivo, Motor, TipoEvento
 
@@ -86,11 +86,40 @@ def test_la_configuracion_del_repositorio_arranca():
     assert m.terminada()
 
 
-def test_un_programa_con_errores_no_arranca(tmp_path):
+def test_un_programa_sin_ninguna_linea_valida_no_arranca(tmp_path):
     (tmp_path / "malo.txt").write_text("DISPARAR\n", encoding="utf-8")
     c = replace(BASE, tanques=(cfg.TanqueConfig("malo", "malo.txt"),))
     m, errores = preparar(c, tmp_path)
-    assert m is None and len(errores) == 1
+    assert m is None
+    assert any("DISPARAR" in e.mensaje for e in errores)
+    assert any("nada que ejecutar" in e.mensaje for e in errores)
+
+
+def test_las_lineas_con_errores_se_saltan_y_la_partida_sigue(tmp_path):
+    (tmp_path / "a.txt").write_text("MOV(E)\nDISPARAR\nmov(e)\nMOV(E)\n",
+                                    encoding="utf-8")
+    (tmp_path / "b.txt").write_text("ESPERAR\n", encoding="utf-8")
+    c = replace(BASE, tanques=(cfg.TanqueConfig("a", "a.txt"),
+                               cfg.TanqueConfig("b", "b.txt")))
+    m, errores = preparar(c, tmp_path)
+    assert m is not None and errores == []
+    assert [e.linea for e in lineas_saltadas(c, tmp_path)] == [2, 3]
+    a = tanque(m, "a")
+    a.posicion = (1, 1)
+    tanque(m, "b").posicion = (8, 8)
+    lineas = []
+    for _ in range(3):
+        lineas += [e.datos["linea"] for e in m.ronda()
+                   if e.tipo is TipoEvento.INSTRUCCION and e.tanque == "a"]
+    # Las líneas 2 y 3 nunca se ejecutan: después de la 1 viene la 4.
+    assert lineas == [1, 4, 1]
+    assert a.posicion == (4, 1)
+
+
+def test_un_archivo_que_no_existe_no_arranca(tmp_path):
+    c = replace(BASE, tanques=(cfg.TanqueConfig("x", "no_existe.txt"),))
+    m, errores = preparar(c, tmp_path)
+    assert m is None and "no existe" in errores[0].mensaje
 
 
 # ---------------------------------------------------------------- turnos
@@ -440,6 +469,21 @@ def test_if_verdadero_ejecuta_la_accion():
     assert tanque(m, "b").vida == 95
     radar = next(e for e in eventos if e.tipo is TipoEvento.RADAR)
     assert radar.datos["lectura"] == 4
+
+
+def test_if_puede_mover_al_tanque():
+    # (1,1) con la pared a 7 casillas al este: RADAR(E) es negativo
+    m = motor(("a", "IF RADAR(E) < -1 THEN MOV(E)", (1, 1)),
+              ("b", "ESPERAR", (8, 8)))
+    m.paso()
+    assert tanque(m, "a").posicion == (2, 1)
+
+
+def test_if_puede_lanzar_mina_y_esperar():
+    m = motor(("a", "IF V > 0 THEN MINA(SE)\nIF V > 0 THEN ESPERAR", (1, 1)),
+              ("b", "ESPERAR", (8, 8)))
+    m.ronda()
+    assert any(mina.posicion == (2, 2) for mina in m.registro.minas)
 
 
 def test_if_radar_explora_en_el_momento():

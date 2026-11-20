@@ -80,8 +80,28 @@ En la ventana, **Iniciar** reproduce la partida sola a la velocidad elegida,
 **Pausar** la detiene en el siguiente turno, **Una ronda** avanza de una en
 una y **Reiniciar** vuelve a jugar la misma partida, que con la misma
 semilla sale idéntica. **Configurar** regresa al formulario para cambiar
-programas, colores, tablero, semilla o rondas. Cada partida se guarda en
-`bitacoras/`.
+programas, colores, tablero, semilla, rondas y los valores de armas y
+defensa. Cada partida se guarda en `bitacoras/`.
+
+En el formulario, cada programa se revisa en cuanto se elige: el aviso de
+la fila dice cuántas instrucciones tiene o cuántos errores, y un clic en el
+aviso rojo los muestra. Los valores numéricos tienen flechas con su rango y
+el botón **Valores por omisión** vuelve a los del reglamento.
+
+Durante la partida, la tarjeta del tanque que juega se marca con su color,
+la franja azul bajo la vida es el escudo que le queda, y al pasar el ratón
+sobre una casilla se lee qué hay en ella. Al terminar, el cartel muestra la
+clasificación.
+
+| Tecla | Acción |
+|---|---|
+| Enter | iniciar (menú y configuración) |
+| F1 | ayuda (menú) |
+| Espacio | iniciar o pausar |
+| → | una ronda |
+| + / − | más rápido / más lento |
+| R | reiniciar la misma partida |
+| Esc | volver a la configuración |
 
 Cada turno se anima:
 

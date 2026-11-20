@@ -19,7 +19,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
 from tanques import config as cfg          # noqa: E402
 from tanques.controlador import (ejecutar, escribir_csv,   # noqa: E402
-                                 formato_resumen, jugar_torneo, preparar)
+                                 formato_resumen, jugar_torneo,
+                                 lineas_saltadas, preparar)
 from tanques.lenguaje import Interprete, formato_errores   # noqa: E402
 from tanques.vista import (VistaBitacora, VistaConsola,   # noqa: E402
                            VistaMultiple)
@@ -62,7 +63,9 @@ def comando_validar(args) -> int:
         print()
 
     if total_errores:
-        print(f"Se encontraron {total_errores} errores. La partida no inicia.")
+        print(f"Se encontraron {total_errores} errores. Al jugar, esas "
+              f"líneas se saltan; un programa sin ninguna instrucción "
+              f"válida no puede jugar.")
         return 1
     print("Todos los programas son válidos.")
     return 0
@@ -108,6 +111,13 @@ def comando_jugar(args) -> int:
     if errores:
         print(formato_errores(errores))
         return 1
+    saltadas = lineas_saltadas(c, RAIZ)
+    if saltadas:
+        print(f"Aviso: se saltan {len(saltadas)} líneas con errores; los "
+              f"tanques juegan con las demás.")
+        for e in saltadas:
+            print(f"  {e}")
+        print()
 
     color = False if args.sin_color else None
     vista = VistaConsola(c.vida_inicial, color=color, resumen=args.resumen,

@@ -210,3 +210,149 @@ def test_la_configuracion_rechaza_valores_invalidos(app):
     pantalla.semilla.set("1")
     _, problemas = pantalla.leer()
     assert "hace falta al menos un tanque" in problemas
+
+
+# ---------------------------------------------------------------- usabilidad
+@requiere_pantalla
+def test_cada_fila_revisa_su_programa_al_momento(app):
+    pantalla = grafica.PantallaConfiguracion(app,
+                                             cfg.cargar(RAIZ / "config.json"))
+    assert "instrucciones" in pantalla.avisos[0]["text"]
+    assert "no juega" in pantalla.avisos[5]["text"]
+    pantalla.rutas[5].set("tanques/no_existe.txt")
+    assert "no existe" in pantalla.avisos[5]["text"]
+    pantalla.rutas[5].set("tanques/con_errores.txt")
+    assert "9 errores" in pantalla.avisos[5]["text"]
+    assert pantalla.cuenta["text"] == "4 de 6 tanques"
+
+
+@requiere_pantalla
+def test_un_programa_con_algunas_lineas_malas_si_juega(app):
+    pantalla = grafica.PantallaConfiguracion(app,
+                                             cfg.cargar(RAIZ / "config.json"))
+    pantalla.rutas[4].set("tanques/con_errores.txt")
+    assert "se saltan" in pantalla.avisos[4]["text"]
+    _, problemas = pantalla.leer()
+    assert problemas == []
+
+
+@requiere_pantalla
+def test_no_se_inicia_si_un_programa_no_tiene_nada_valido(app, tmp_path):
+    malo = tmp_path / "malo.txt"
+    malo.write_text("DISPARAR\nmov(n)\n", encoding="utf-8")
+    pantalla = grafica.PantallaConfiguracion(app,
+                                             cfg.cargar(RAIZ / "config.json"))
+    pantalla.rutas[4].set(str(malo))
+    assert "ninguna instrucción válida" in pantalla.avisos[4]["text"]
+    _, problemas = pantalla.leer()
+    assert any("tanques 5" in p for p in problemas)
+
+
+@requiere_pantalla
+def test_el_visor_marca_las_lineas_con_error(app):
+    v = grafica.VisorPrograma(app, RAIZ / "tanques" / "con_errores.txt", 1,
+                              "#2E5E8C", cfg.Configuracion())
+    try:
+        texto = v.texto
+        rojas = {n for n in range(1, 12)
+                 if "error" in texto.tag_names(f"{n}.1")}
+        assert 2 not in rojas              # MOV(N) es válida
+        assert {3, 4, 7} <= rojas
+        assert "avanza una casilla al norte" in texto.get("2.0", "2.end")
+        assert v.validas >= 1 and v.con_error >= 5
+        v.senalar(3, 0, 0)                 # el ratón sobre la línea 3
+        assert v.globo.ventana is not None
+        v.senalar(2, 0, 0)                 # sobre una línea válida
+        assert v.globo.ventana is None
+    finally:
+        v.cerrar()
+
+
+def test_explicar_dice_que_hace_cada_instruccion():
+    from tanques.lenguaje import Interprete
+    c = cfg.Configuracion()
+    p, _ = Interprete().analizar("MISIL(N)\nIF V < 40 THEN REPARAR")
+    assert grafica.explicar(p.instrucciones[0], c) == \
+        "lanza un misil al norte (10 de daño)"
+    assert grafica.explicar(p.instrucciones[1], c) == \
+        "si su vida es menor que 40, se repara +20 (un solo uso)"
+
+
+@requiere_pantalla
+def test_el_formulario_muestra_el_dano_derivado(app):
+    pantalla = grafica.PantallaConfiguracion(app, cfg.Configuracion())
+    pantalla.amt.set("8")
+    assert "misil 16 · mina 12" in pantalla.derivados["text"]
+
+
+@requiere_pantalla
+def test_valores_por_omision_y_los_campos_conservan_su_valor(app):
+    base = replace(cfg.Configuracion(), escudo_puntos=35,
+                   municion=cfg.Municion(minas=7, misiles=9))
+    pantalla = grafica.PantallaConfiguracion(app, base)
+    assert (pantalla.escudo.get(), pantalla.misiles.get()) == ("35", "9")
+    pantalla._por_omision()
+    assert (pantalla.escudo.get(), pantalla.misiles.get(),
+            pantalla.minas.get()) == ("20", "3", "3")
+
+
+@requiere_pantalla
+def test_atajos_de_teclado(app):
+    config, m = motor_de(("a", "ESPERAR", (1, 1)), ("b", "ESPERAR", (3, 3)))
+    app.partida(config)
+    v = app._partida
+    v._alternar()                      # espacio: iniciar
+    assert v.modo == "auto"
+    v._alternar()                      # espacio otra vez: pausar
+    assert v.modo == "pausa"
+    v.velocidad.set(5)
+    v._acelerar(1)
+    assert v.velocidad.get() == 6 and "6 ·" in v.vel_texto["text"]
+    v._si_activo("configurar")         # Esc
+    assert v.accion == "configurar"
+
+
+@requiere_pantalla
+def test_la_tarjeta_del_que_juega_se_resalta(app):
+    from tanques.modelo import Evento, TipoEvento
+    config, m = motor_de(("a", "ESPERAR", (1, 1)), ("b", "ESPERAR", (3, 3)))
+    app.partida(config)
+    v = app._partida
+    pulsar(app, "salir")
+    ejecutar(m, v)                     # arma las tarjetas
+    v._anotar([Evento(1, TipoEvento.INSTRUCCION, "", "b",
+                      {"instruccion": "ESPERAR", "linea": 1})])
+    t = v._tarjetas
+    assert str(t["b"]["marco"]["highlightbackground"]).upper() == \
+        t["b"]["color"].upper()
+    assert t["a"]["marco"]["highlightbackground"] == grafica.BORDE_SUAVE
+
+
+@requiere_pantalla
+def test_la_casilla_bajo_el_raton_se_describe(app):
+    config, m = motor_de(("a", "ESCUDO", (2, 2)), ("b", "ESPERAR", (5, 5)))
+    app.partida(config)
+    pulsar(app, "una", "salir")
+    ejecutar(m, app._partida)
+    v = app._partida
+    v._raton = v._centro((2, 2))
+    v._describir(v._estado)
+    assert "tanque 1 a" in v.leyenda["text"]
+    assert "escudo 20" in v.leyenda["text"]
+    v._raton = v._centro((4, 4))
+    v._describir(v._estado)
+    assert v.leyenda["text"].endswith("vacía")
+
+
+@requiere_pantalla
+def test_el_cartel_final_trae_la_clasificacion(app):
+    config, m = motor_de(("a", "AMT(E)", (1, 1)), ("b", "ESPERAR", (3, 1)),
+                         vida_inicial=10)
+    app.partida(config)
+    pulsar(app, "iniciar")
+    ejecutar(m, app._partida)
+    c = app._partida.canvas
+    textos = [c.itemcget(i, "text") for i in c.find_withtag("cartel")
+              if c.type(i) == "text"]
+    assert any(t.startswith("1.  Tanque 1 · a") for t in textos)
+    assert any("destruido" in t for t in textos)
