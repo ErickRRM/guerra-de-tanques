@@ -1,7 +1,7 @@
 """Pruebas de la partida de exhibición (config_dinamico.json).
 
 Sus tanques están escritos para que la partida se vea: disparan siempre,
-barren con el radar, siembran minas y lanzan misiles. Lo que se comprueba
+exploran con el radar, lanzan minas y lanzan misiles. Lo que se comprueba
 es que la configuración sea válida y que cumplan lo que prometen sus
 comentarios.
 """
@@ -60,5 +60,6 @@ def test_el_embestidor_y_la_patrulla_no_viven_en_la_pared():
             m = Motor(solo, [p], posiciones=[inicio])
             m.jugar()
             # Algún choque al arrancar junto a la pared, y ya no más.
-            assert m.registro.tanques[0].dano_autoinfligido <= 15, \
+            assert m.registro.tanques[0].dano_autoinfligido \
+                <= 3 * CONFIG.dano.choque_pared, \
                 (archivo, inicio)

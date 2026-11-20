@@ -146,9 +146,10 @@ def test_la_animacion_se_corta_si_el_usuario_sale(lienzo):
 def test_cada_accion_tiene_su_animacion(app):
     motor, v = partida(
         app,
-        ("a", "AMT(E)\nMISIL(5,5)\nRADAR(S)\nESCUDO", (1, 1)),
-        ("b", "MINA\nMOV(S)\nESPERAR\nESPERAR", (4, 1)),
-        ("c", "ESPERAR", (5, 5)), vida_inicial=30)
+        ("a", "AMT(E)\nMISIL(E)\nIF RADAR(S) > 0 THEN AMT(S)\nESCUDO",
+         (1, 1)),
+        ("b", "MINA(S,E)\nESPERAR", (4, 1)),
+        ("c", "ESPERAR\nMOV(N)", (5, 2)), vida_inicial=12)
     llamadas = espiar(v)
     guion(v, "una", "una", "una", "una", "salir")
     ejecutar(motor, v)
@@ -159,7 +160,7 @@ def test_cada_accion_tiene_su_animacion(app):
 
 
 def test_el_choque_y_la_pared(app):
-    motor, v = partida(app, ("a", "DAÑAR(E)\nMOV(N)", (1, 1)),
+    motor, v = partida(app, ("a", "MOV(E)\nMOV(N)", (1, 1)),
                        ("b", "ESPERAR", (2, 1)))
     llamadas = espiar(v)
     guion(v, "una", "una", "salir")
@@ -214,7 +215,9 @@ def test_una_ronda_no_se_detiene_entre_turnos(app):
 
 
 def test_la_mina_bajo_un_tanque_se_ve(app):
-    motor, v = partida(app, ("a", "MINA", (2, 2)), ("b", "ESPERAR", (8, 8)))
+    # b lanza la mina sobre a; sin armar, queda debajo de a.
+    motor, v = partida(app, ("a", "ESPERAR", (3, 3)),
+                       ("b", "MINA(N,E)", (2, 4)), mina_rondas_armado=1)
     guion(v, "una", "salir")
     ejecutar(motor, v)
-    assert v.canvas.find_withtag("en_2_2")
+    assert v.canvas.find_withtag("en_3_3")

@@ -3,27 +3,25 @@
   "tablero": { "ancho": 8, "alto": 8 },
   "rondas_maximas": 200,
   "vida_inicial": 100,
-  "municion": { "minas": 3, "misiles": 3, "reparaciones": 1 },
+  "municion": { "minas": 3, "misiles": 3 },
   "dano": {
-    "ametralladora": 10,
-    "mina": 25,
-    "misil": 30,
-    "choque_tanque": 15,
-    "choque_pared": 5
+    "ametralladora": 5,
+    "choque_tanque": 12,
+    "choque_pared": 12
   },
   "reparar_puntos": 20,
-  "refaccion": { "minimo": 15, "maximo": 25 },
+  "escudo_puntos": 20,
+  "refaccion": { "minimo": 15, "maximo": 35 },
 
   "reglas": {
-    "modo_radar": "hibrido",
     "orden_turnos": "rotativo",
     "acredita_choque": "embestidor",
-    "mina": { "turnos_armado": 2, "medida": "turnos_propietario" }
+    "mina": { "rondas_armado": 0 }
   },
 
   "tanques": [
-    { "nombre": "cazador",    "programa": "tanques/cazador.txt",    "color": "#2E5E8C" },
-    { "nombre": "defensivo",  "programa": "tanques/defensivo.txt",  "color": "#D97706" },
+    { "nombre": "cazador", "programa": "tanques/cazador.txt", "color": "#2E5E8C" },
+    { "nombre": "defensivo", "programa": "tanques/defensivo.txt", "color": "#D97706" },
     { "nombre": "explorador", "programa": "tanques/explorador.txt", "color": "#0F766E" }
   ]
 }

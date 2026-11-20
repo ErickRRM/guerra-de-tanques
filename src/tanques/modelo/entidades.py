@@ -23,7 +23,7 @@ class Tanque:
     nombre: str
     programa: Any                 # cualquier objeto con .en(i) -> instrucción
     posicion: Posicion
-    vida: int
+    vida: float                   # la mina quita 1.5 veces la AMT: sin redondeo
     vida_maxima: int
     minas: int
     misiles: int
@@ -32,37 +32,30 @@ class Tanque:
     numero: int = 0               # el que se imprime sobre la torreta
 
     vivo: bool = True
-    escudo: bool = False
+    escudo: float = 0             # puntos que absorbe antes que la vida
     contador: int = 0             # índice de la siguiente instrucción
     turnos: int = 0               # turnos ya jugados
     ultima_direccion: Direccion = Direccion.N
     ultima_linea: int = 0
-    #: Lectura del último RADAR suelto: (dirección, distancia). D-01.
-    ultimo_radar: Optional[tuple[Direccion, int]] = None
     #: Si entró a una casilla en este turno; las minas se pisan al entrar.
     llego: bool = False
 
-    dano_infligido: int = 0       # el criterio de desempate
-    dano_recibido: int = 0
-    dano_autoinfligido: int = 0   # pared, mina propia, misil propio
+    dano_infligido: float = 0     # el criterio de desempate
+    dano_recibido: float = 0
+    dano_autoinfligido: float = 0  # pared, mina propia
 
     def __repr__(self) -> str:
-        return f"Tanque({self.nombre!r}, {self.posicion}, vida={self.vida})"
+        return f"Tanque({self.nombre!r}, {self.posicion}, vida={self.vida:g})"
 
 
 @dataclass(eq=False)
 class Mina:
-    """Una mina colocada. Se arma cuando `faltan` llega a cero."""
+    """Una mina lanzada. Se arma al empezar la ronda `ronda_armado`."""
 
     posicion: Posicion
     dueno: Tanque
-    faltan: int
-    ronda_colocada: int
-    turno_colocada: int           # turnos del dueño al colocarla
-
-    @property
-    def armada(self) -> bool:
-        return self.faltan <= 0
+    ronda_armado: int
+    armada: bool = False
 
 
 @dataclass(frozen=True)

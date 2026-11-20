@@ -1,14 +1,14 @@
-# Minador — avanza hacia el este sembrando minas detrás de sí.
-# Siembra en su casilla y en la de abajo, y cada vuelta termina una columna
-# más al este: nunca vuelve a una columna que ya dejó, así que no pisa sus
+# Minador — avanza hacia el este lanzando minas a las esquinas de atrás.
+# Las minas caen siempre en la columna de la que viene, y cada vuelta
+# termina una columna más al este: nunca vuelve atrás, así que no pisa sus
 # propias minas. Al llegar a la pared oriental se queda ahí vigilando.
-MINA
+MINA(N,O)
 AMT(O)
 MOV(S)
-MINA
+MINA(S,O)
 AMT(S)
 MOV(E)
-RADAR(E)
+IF RADAR(E) > 0 THEN MISIL(E)
 AMT(E)
 MOV(N)
 AMT(N)

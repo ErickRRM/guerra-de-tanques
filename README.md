@@ -89,15 +89,15 @@ Cada turno se anima:
 |---|---|
 | Turno de un tanque | recuadro amarillo; el cañón gira hacia la dirección que usa |
 | `AMT` | ráfaga de tres balas trazadoras y chispas donde pega |
-| `MISIL` | mira roja sobre la casilla, misil en arco con estela de humo y explosión |
-| `MINA` | la mina sale del tanque y se asienta; un pulso rojo al armarse |
+| `MISIL` | misil en arco con estela de humo hasta el primer tanque o la pared, y explosión |
+| `MINA` | la mina sale volando del tanque a la esquina; un pulso rojo al armarse |
 | Pisar una mina | explosión grande |
 | `MOV` | el tanque se desliza; contra la pared, rebota con chispas |
-| `DAÑAR` o choque | el tanque se lanza contra el otro y regresa |
-| `RADAR` | haz verde; pulso rojo si encontró un tanque, gris si es la pared |
+| Choque | el tanque se lanza contra el otro y regresa |
+| `IF RADAR` | haz verde; pulso rojo si encontró un tanque, gris si es la pared |
 | `ESCUDO` | anillo azul que se expande |
-| Daño, curación, bloqueo | cifra flotante: `−10` en rojo, `+20` en verde, «bloqueado» en azul |
-| Destrucción | explosión y humo; queda la refacción |
+| Daño, curación, escudo | cifra flotante: `−5` en rojo, `+20` en verde, lo absorbido por el escudo en azul |
+| Destrucción | explosión y humo; queda el tanque destruido, que repara a quien pasa encima |
 | `IF` falso | una ✗ gris |
 
 La velocidad también estira o acorta las animaciones; en las velocidades
@@ -123,7 +123,7 @@ python3 main.py torneo --partidas 500 --csv lote.csv
 
 El resumen separa las victorias por destrucción de las que se ganan por
 desempate, y el daño causado a rivales del autoinfligido (choques con la
-pared, minas y misiles propios). El CSV tiene una fila por partida.
+pared y minas propias). El CSV tiene una fila por partida.
 
 Después de cada ronda se muestran sus eventos, el tablero y el panel de
 estado:
@@ -132,8 +132,9 @@ estado:
 === Ronda 3 =================================
   #3 explorador  L4: MOV(O)
       explorador avanza al O (8, 6) -> (7, 6)
-  #1 cazador  L4: RADAR(E)
-      cazador explora al E: pared a 2
+  #1 cazador  L4: IF RADAR(S) > 0 THEN AMT(S)
+      cazador explora al S: pared a 5
+      cazador: RADAR(S) > 0 es falso (-5)
 
      1   2   3   4   5   6   7   8
   1   .   .   .   .   .   .   .   .
@@ -142,16 +143,16 @@ estado:
   4   .   .   .   .   .   .  1>   .
   ...
 
-#1 cazador     [##########] 100          minas 3 misiles 3 rep 1  daño    0  L4 RADAR(E)
-#2 defensivo   [##########] 100          minas 2 misiles 3 rep 1  daño    0  L4 RADAR(N)
+#1 cazador     [##########]  100            minas 3 misiles 3 rep 1  daño     0  L4 IF RADAR(S) > 0 THEN AMT(S)
+#2 defensivo   [#########.] 92.5  esc 15    minas 3 misiles 3 rep 1  daño     5  L4 IF RADAR(O) > 0 THEN AMT(O)
 ```
 
 | En el tablero | Significa |
 |---|---|
 | `1>` | tanque 1; la flecha es su cañón, que apunta a la última dirección usada |
-| `[1>]` | tanque 1 con el escudo activo |
+| `[1>]` | tanque 1 con escudo (el panel dice cuántos puntos le quedan) |
 | `*` / `o` | mina armada / mina que aún no se arma |
-| `+` | refacción |
+| `+` | tanque destruido: repara a quien pasa encima |
 
 Cada tanque se identifica por su número, y el color de `config.json` solo
 lo acompaña: sin color (`--sin-color`, una salida redirigida a archivo o la
@@ -169,19 +170,25 @@ Cada tanque se programa en un archivo de texto, una instrucción por línea. Las
 líneas vacías se ignoran y `#` marca un comentario.
 
 ```
-instruccion := MOV(d) | AMT(d) | RADAR(d) | DAÑAR(d)
-             | MISIL(x, y) | MINA | ESCUDO | REPARAR | ESPERAR
+instruccion := MOV(d) | AMT(d) | MISIL(d) | MINA(v, h)
+             | ESCUDO | REPARAR | ESPERAR
              | IF condicion THEN accion
 
 condicion   := RADAR(d) cmp entero  |  VIDA cmp entero
-accion      := AMT(d) | MISIL(x, y) | ESCUDO | REPARAR
+accion      := AMT(d) | MISIL(d) | ESCUDO | REPARAR
 
 d           := N | S | E | O
+v, h        := una norte-sur y una este-oeste: (N,E) (N,O) (S,E) (S,O)
 cmp         := >  |  <  |  >=  |  <=  |  ==
 ```
 
-Cada instrucción consume exactamente un turno, incluida la que no produce
-efecto porque su condición resultó falsa.
+Todo se escribe en **mayúsculas**, también las direcciones: `mov(n)` es un
+error. Cada instrucción consume exactamente un turno, incluida la que no
+produce efecto porque su condición resultó falsa.
+
+El daño no es una instrucción: es la consecuencia de las armas, las minas y
+los choques. `RADAR` tampoco se usa suelto: solo existe como condición de un
+`IF`, que explora en ese momento.
 
 Las posiciones iniciales de los tanques se sortean, pero el orden de los
 turnos es rotativo: gira una posición en cada ronda, de modo que nadie
@@ -190,14 +197,13 @@ conserva la ventaja de actuar primero y el escudo dura siempre lo mismo
 
 | Instrucción | Efecto |
 |---|---|
-| `MOV(d)` | Avanza una casilla. Con pared sufre 5 puntos; con un tanque, choque de 15 a ambos |
-| `AMT(d)` | Ametralladora: 10 puntos al primer enemigo de esa dirección. Munición ilimitada |
-| `MISIL(x,y)` | 30 puntos al tanque de esa coordenada. Tres por partida |
-| `MINA` | Mina en la casilla actual; se arma dos turnos después y causa 25 puntos. Tres por partida |
-| `DAÑAR(d)` | Embiste al tanque contiguo: 15 puntos a ambos |
-| `ESCUDO` | Inmunidad hasta el siguiente turno del tanque |
-| `RADAR(d)` | Distancia al primer elemento: positiva si es enemigo, negativa si es pared |
-| `REPARAR` | Recupera 20 puntos de vida. Un solo uso por partida |
+| `MOV(d)` | Avanza una casilla. Contra la pared sufre 12; contra un tanque, choque de 12 a los dos |
+| `AMT(d)` | Ametralladora: daño base al primer tanque de esa dirección. Munición ilimitada |
+| `MISIL(d)` | En línea recta como `AMT`, con el doble de daño. Gasta munición aunque no alcance a nadie |
+| `MINA(v,h)` | Lanza una mina a la esquina contigua; desde (2,2), `MINA(N,O)` cae en (1,1). Se activa de inmediato y causa 1.5 veces la `AMT` |
+| `ESCUDO` | Vida extra: absorbe daño hasta agotarse. Activarlo lo recarga, no lo acumula |
+| `REPARAR` | Recupera vida. Un solo uso por partida |
+| `RADAR(d)` | Solo en un `IF`: distancia al primer tanque (positiva) o a la pared (negativa) |
 | `ESPERAR` | No hace nada y cede el turno |
 | `VIDA` | Vida restante; solo dentro de una condición |
 | `IF ... THEN ...` | Ejecuta la acción si la condición se cumple |
@@ -214,29 +220,49 @@ IF VIDA < 50 THEN ESCUDO
 IF VIDA < 40 THEN REPARAR
 ```
 
-Dos consejos para escribir programas, que salen de medir cien partidas:
+Además, pasar por encima de un tanque destruido repara de 15 a 35 puntos
+al azar.
 
-- **No hace falta un `RADAR` antes del `IF`.** El `IF RADAR(d)` explora por
-  su cuenta si no hay lectura previa en esa dirección (D-01), y así la
-  lectura es la del momento y no la de un turno antes.
+### Valores por omisión y rangos
+
+Se cambian en `config.json` o en el formulario de la interfaz gráfica antes
+de la partida. Fuera de rango, la partida no inicia.
+
+| Valor | Por omisión | Rango |
+|---|---|---|
+| Vida | 100 | — |
+| Daño de `AMT` | 5 | 5 a 20 |
+| Daño de `MISIL` | `AMT` × 2 = 10 | derivado |
+| Daño de `MINA` | `AMT` × 1.5 = 7.5, sin redondear | derivado |
+| Choque contra pared / contra tanque | 12 / 12 a cada uno | — |
+| Misiles | 3 | 0 a 10 |
+| Minas | 3 | 0 a 10 |
+| Rondas para armar la mina | 0 (inmediato) | 0 a 10 |
+| `REPARAR` | +20, un uso | 15 a 30 |
+| `ESCUDO` | 20 | 5 a 50 |
+| Tanque destruido | +15 a +35 al azar | — |
+| Tanques por partida | — | 1 a 6 |
+
+Consejos para escribir programas, que salen de medir cien partidas:
+
 - **Los recorridos deben volver a su punto de partida.** `MOV` no se admite
   dentro de un `IF`, así que un tanque no puede esquivar la pared al verla;
   si avanza siempre hacia el mismo lado, se pasa la partida chocando.
 - **`AMT(d)` a secas rinde lo mismo que `IF RADAR(d) > 0 THEN AMT(d)`.** El
   `IF` también gasta el turno, así que si no hay blanco se pierde igual; sin
-  `IF` al menos se ve la ráfaga.
-- **Las minas y los recorridos cerrados no se llevan.** Un tanque que vuelve
-  a su punto de partida acaba pisando la mina que dejó ahí. El `minador`
-  avanza hacia el este y nunca regresa a una columna que ya dejó.
+  `IF` al menos se ve la ráfaga. Con `MISIL` es al revés: conviene el `IF`
+  para no gastar munición al vacío.
+- **Las minas y los recorridos cerrados no se llevan.** Un tanque que pasa
+  por la esquina donde lanzó una mina la pisa. El `minador` lanza sus minas
+  hacia atrás (al oeste) y avanza hacia el este sin volver.
 
 ### Tolerancias del validador
 
 El profesor evaluará el simulador cargando sus propios archivos, así que el
-validador acepta variaciones razonables de escritura:
+validador acepta variaciones razonables de escritura (pero no minúsculas):
 
-- Mayúsculas o minúsculas indistintamente (`mov(n)` = `MOV(N)`)
-- Espacios de sobra (`MISIL ( 3 , 5 )`)
-- `DAÑAR` y `DANAR`
+- Espacios de sobra (`MINA ( N , E )`)
+- Las dos direcciones de `MINA` en cualquier orden (`MINA(E,N)` = `MINA(N,E)`)
 - Finales de línea de Windows y marca BOM
 - Archivos guardados en UTF-8 o en Latin-1
 

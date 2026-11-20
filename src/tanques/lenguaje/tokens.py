@@ -22,10 +22,10 @@ class TipoToken(Enum):
     FIN = "fin de línea"
 
 
-#: Palabras reservadas del lenguaje. DANAR se admite como variante de DAÑAR
-#: para que un teclado sin eñe no invalide el archivo.
+#: Palabras reservadas del lenguaje. RADAR solo aparece en la condición de
+#: un IF; DAÑAR ya no es instrucción: el daño es consecuencia de las demás.
 PALABRAS_RESERVADAS = frozenset({
-    "MOV", "AMT", "RADAR", "DAÑAR", "DANAR", "MISIL", "MINA", "ESCUDO",
+    "MOV", "AMT", "RADAR", "MISIL", "MINA", "ESCUDO",
     "REPARAR", "ESPERAR", "IF", "THEN", "VIDA",
 })
 

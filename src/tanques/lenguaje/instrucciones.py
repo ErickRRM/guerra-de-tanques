@@ -14,12 +14,14 @@ from ..modelo.direccion import Direccion
 
 
 class Tipo(Enum):
-    """Las once instrucciones del lenguaje definido en clase."""
+    """Las instrucciones del lenguaje.
+
+    RADAR no es una instrucción suelta: solo existe como condición de un IF,
+    que explora en el momento de evaluarse.
+    """
 
     MOV = "MOV"
     AMT = "AMT"
-    RADAR = "RADAR"
-    DANAR = "DAÑAR"
     MISIL = "MISIL"
     MINA = "MINA"
     ESCUDO = "ESCUDO"
@@ -29,11 +31,10 @@ class Tipo(Enum):
 
 
 #: Instrucciones cuyo único parámetro es una dirección.
-CON_DIRECCION = frozenset({Tipo.MOV, Tipo.AMT, Tipo.RADAR, Tipo.DANAR})
+CON_DIRECCION = frozenset({Tipo.MOV, Tipo.AMT, Tipo.MISIL})
 
 #: Instrucciones sin parámetros.
-SIN_PARAMETROS = frozenset({Tipo.MINA, Tipo.ESCUDO, Tipo.REPARAR,
-                            Tipo.ESPERAR})
+SIN_PARAMETROS = frozenset({Tipo.ESCUDO, Tipo.REPARAR, Tipo.ESPERAR})
 
 #: Acciones admitidas dentro de un IF.
 ACCIONES_EN_IF = frozenset({Tipo.AMT, Tipo.MISIL, Tipo.ESCUDO, Tipo.REPARAR})
@@ -91,8 +92,9 @@ class Instruccion:
 
     tipo: Tipo
     direccion: Optional[Direccion] = None
-    x: Optional[int] = None
-    y: Optional[int] = None
+    #: Solo en MINA: la componente este-oeste de la esquina; `direccion`
+    #: guarda la norte-sur.
+    direccion2: Optional[Direccion] = None
     condicion: Optional[Condicion] = None
     accion: Optional["Instruccion"] = None   # solo cuando el tipo es IF
     linea: int = 0
@@ -100,8 +102,9 @@ class Instruccion:
     def __str__(self) -> str:
         if self.tipo is Tipo.IF:
             return f"IF {self.condicion} THEN {self.accion}"
-        if self.tipo is Tipo.MISIL:
-            return f"MISIL({self.x},{self.y})"
+        if self.direccion2 is not None:
+            return (f"{self.tipo.value}({self.direccion.name},"
+                    f"{self.direccion2.name})")
         if self.direccion is not None:
             return f"{self.tipo.value}({self.direccion.name})"
         return self.tipo.value

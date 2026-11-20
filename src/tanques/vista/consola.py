@@ -93,7 +93,7 @@ def dibujar_tablero(estado: EstadoJuego,
     return "\n".join(lineas)
 
 
-def barra_vida(vida: int, maxima: int) -> str:
+def barra_vida(vida: float, maxima: int) -> str:
     llenas = 0 if maxima <= 0 else round(_BARRA * max(vida, 0) / maxima)
     llenas = min(_BARRA, llenas)
     return "[" + "#" * llenas + "." * (_BARRA - llenas) + "]"
@@ -108,15 +108,15 @@ def dibujar_panel(estado: EstadoJuego, instrucciones: dict[str, str],
     lineas = []
     for t in estado.tanques:
         nombre = pintar(f"#{t.numero} {t.nombre:<{ancho}}", t.color)
-        escudo = "escudo" if t.escudo else "      "
-        medio = (f"{barra_vida(t.vida, vida_maxima)} {t.vida:>3}  "
+        escudo = f"esc {t.escudo:<4g}" if t.escudo else " " * 8
+        medio = (f"{barra_vida(t.vida, vida_maxima)} {t.vida:>4g}  "
                  f"{escudo}  minas {t.minas} misiles {t.misiles} "
                  f"rep {t.reparaciones}")
         linea = (f"L{t.linea} {instrucciones[t.nombre]}"
                  if t.nombre in instrucciones else "")
         if not t.vivo:
             medio, linea = "destruido".ljust(len(medio)), ""
-        lineas.append(f"{nombre}  {medio}  daño {t.dano_infligido:>4}  "
+        lineas.append(f"{nombre}  {medio}  daño {t.dano_infligido:>5g}  "
                       f"{linea}".rstrip())
     return "\n".join(lineas)
 
@@ -249,8 +249,8 @@ class VistaConsola(Vista):
         for lugar, t in enumerate(sorted(estado.tanques, key=orden), 1):
             nombre = self._pintar(f"#{t.numero} {t.nombre:<{ancho}}",
                                   t.color)
-            lineas.append(f"  {lugar}. {nombre}  {t.vida:>4}  "
-                          f"{t.dano_infligido:>14}")
+            lineas.append(f"  {lugar}. {nombre}  {t.vida:>4g}  "
+                          f"{t.dano_infligido:>14g}")
         return "\n".join(lineas)
 
     def _titulo(self, texto: str) -> str:

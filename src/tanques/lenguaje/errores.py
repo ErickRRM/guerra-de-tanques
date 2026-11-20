@@ -40,6 +40,28 @@ def direccion_invalida(texto: str) -> str:
     return f"dirección inválida: {texto!r} (admitidas: N, S, E, O)"
 
 
+def direcciones_mina(texto: str) -> str:
+    return (f"MINA necesita una esquina: {texto!r} "
+            "(use MINA(N,E), MINA(N,O), MINA(S,E) o MINA(S,O))")
+
+
+def radar_suelto() -> str:
+    return ("RADAR solo se usa como condición de un IF: "
+            "IF RADAR(d) > 0 THEN accion")
+
+
+def danar_no_es_instruccion() -> str:
+    return ("DAÑAR no es una instrucción: el daño lo causan AMT, MISIL, "
+            "MINA y los choques al moverse")
+
+
+def en_minusculas(lexemas: list[str]) -> str:
+    malas = ", ".join(repr(x) for x in lexemas)
+    buenas = ", ".join(repr(x.upper()) for x in lexemas)
+    return (f"las instrucciones y direcciones van en mayúsculas: "
+            f"{malas} (escriba {buenas})")
+
+
 def accion_no_permitida(texto: str) -> str:
     return (f"acción no permitida en IF: {texto!r} "
             "(admitidas: AMT, MISIL, ESCUDO, REPARAR)")
@@ -48,11 +70,6 @@ def accion_no_permitida(texto: str) -> str:
 def if_invalido() -> str:
     return ("estructura IF inválida "
             "(use: IF RADAR(dir) > 0 THEN accion  |  IF VIDA < n THEN accion)")
-
-
-def fuera_del_tablero(x: int, y: int, ancho: int, alto: int) -> str:
-    return (f"coordenada fuera del tablero: ({x},{y}) "
-            f"— el tablero es de {ancho} x {alto}")
 
 
 def caracter_invalido(c: str) -> str:

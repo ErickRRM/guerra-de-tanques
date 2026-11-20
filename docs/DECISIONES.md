@@ -12,9 +12,55 @@ alguna resulta equivocada al probar el juego, se cambia el valor en
 
 ---
 
-## D-01 · Qué lectura usa `IF RADAR(dir) ...`
+## D-00 · Correcciones del profesor (noviembre de 2026)
 
-**Decisión: modo híbrido.** La condición usa la lectura guardada de esa
+El profesor revisó las reglas y cambió varias. Las que eran decisiones
+nuestras quedan **reemplazadas** y se marcan abajo; las demás siguen
+vigentes. Lo que dijo:
+
+| Corrección | Cómo quedó en el código |
+|---|---|
+| Todo en mayúsculas, incluso las direcciones | `mov(n)` es un error léxico; se avisa una vez por línea |
+| `MISIL(dir)` en línea recta como `AMT`, sin `x,y` | Al primer tanque de la línea; gasta munición aunque falle |
+| `DAÑAR` es consecuencia, no instrucción | Se quitó. El choque ocurre al moverse hacia un tanque |
+| `IF RADAR` no necesita un `RADAR` antes | `RADAR` solo existe en la condición y explora al evaluarse. Reemplaza **D-01** |
+| `ESCUDO` es configurable, como vida extra | Reserva de puntos que absorbe daño hasta agotarse. Reemplaza la inmunidad de un turno |
+| `MINA(v,h)` se lanza a la esquina contigua y se activa de inmediato | `rondas_armado = 0`; se puede configurar. Reemplaza **D-03** |
+| Pasar sobre un tanque destruido repara de 15 a 35 | Es la «refacción» de antes con otro rango |
+| `REPARAR`: 20, configurable de 15 a 30, un uso | Se mantiene como instrucción además del cadáver |
+| Máximo 6 tanques | Se valida en `config.py` |
+| `AMT` 5 (5 a 20); misil `AMT`×2; mina `AMT`×1.5 | Sin redondear: la vida puede quedar en 92.5 |
+| Choque: pared 12, enemigo 12 | Los dos tanques reciben los 12 |
+| Misiles y minas: 3, máximo 10 | Rango 0 a 10 |
+
+### Lo que el profesor no fijó y decidimos nosotros
+
+- **Valor del escudo: 20, configurable de 5 a 50.** Es el mismo valor que
+  `REPARAR`, para que «vida extra» valga lo mismo que una reparación.
+- **El escudo no se acumula.** Activarlo lo recarga hasta su valor; si ya
+  está completo no hace nada. Acumularlo haría invencible a un programa que
+  solo escribe `ESCUDO`.
+- **El escudo absorbe cualquier daño**, incluida la pared y la mina. Antes
+  la pared lo atravesaba; con el escudo como vida extra esa excepción ya no
+  tiene sentido.
+- **Lo absorbido por el escudo no se acredita** para el desempate: solo el
+  daño que llega a la vida.
+- **Mina fuera del tablero o sobre otra mina:** no pasa nada y no se gasta,
+  igual que `REPARAR` con la vida completa.
+- **Mina que cae sobre un tanque:** como se activa de inmediato, estalla en
+  ese momento. Se acredita a quien la lanzó.
+- **El rango de las rondas de armado es 0 a 10**, por si se quiere volver a
+  una mina diferida.
+
+---
+
+## D-01 · Qué lectura usa `IF RADAR(dir) ...`  — *reemplazada por D-00*
+
+Ya no existe el `RADAR` suelto: el `IF RADAR(dir)` explora siempre en el
+momento de evaluarse, y la clave `reglas.modo_radar` desapareció. Se
+conserva el razonamiento original como historia.
+
+**Decisión original: modo híbrido.** La condición usa la lectura guardada de esa
 dirección si el tanque ya exploró ahí antes; si no hay ninguna, explora en ese
 mismo momento para evaluar la condición.
 
@@ -96,7 +142,11 @@ escudo. La variedad ya la aporta el sorteo de posiciones iniciales.
 
 ---
 
-## D-03 · En qué se cuentan los dos turnos de armado de la mina
+## D-03 · En qué se cuentan los dos turnos de armado de la mina — *reemplazada por D-00*
+
+Ahora la mina se activa de inmediato (`reglas.mina.rondas_armado = 0`) y,
+si se configura un retraso, se cuenta en rondas. La clave `medida`
+desapareció. Se conserva el razonamiento original como historia.
 
 **Decisión: dos turnos del propietario.** La mina queda armada cuando el
 tanque que la puso ha jugado dos turnos más.
@@ -125,10 +175,11 @@ volviera al orden aleatorio volvería a importar.
 
 ## D-04 · A quién se acredita el daño de un choque
 
-**Decisión: al embestidor, y solo el daño que causó al otro.** `DAÑAR(dir)`
-reparte 15 puntos a cada tanque; los 15 que recibe el enemigo cuentan para el
-desempate a favor de quien embistió, y los 15 que se hace a sí mismo no se le
-acreditan a nadie.
+**Decisión: al embestidor, y solo el daño que causó al otro.** Un choque
+(`MOV` hacia un tanque) reparte 12 puntos a cada tanque —15 antes de D-00—;
+los que recibe el enemigo cuentan para el desempate a favor de quien
+embistió, y los que se hace a sí mismo no se le acreditan a nadie. Los
+números de abajo son los de la regla original.
 
 *Clave:* `reglas.acredita_choque = "embestidor"`
 
@@ -168,6 +219,11 @@ existió— pero vuelve el desempate sensible a ser embestido, que no es mérito
 
 ## D-05 · Cuándo se pisa una mina
 
+*Con D-00 la mina se lanza a otra casilla y no a la propia, así que el
+problema de abajo ya no se da; la regla sigue vigente y además una mina
+activa que cae sobre un tanque estalla en ese momento. El escudo ahora sí
+puede cubrir una mina.*
+
 **Decisión: al entrar a la casilla.** Una mina armada estalla cuando un
 tanque llega a su casilla con `MOV`. Quedarse encima no la detona.
 
@@ -196,9 +252,8 @@ propia mina dos turnos después de ponerla.
 
 | Caso | Resolución |
 |---|---|
-| Un misil cae en una casilla con mina | La mina no se ve afectada: el misil solo daña tanques |
-| Mina sobre otra mina | No se coloca y no gasta munición; el turno se pierde |
-| Misil a la propia casilla | El tanque se daña a sí mismo; cuenta como autoinfligido, no se acredita |
+| Un misil pasa sobre una casilla con mina | La mina no se ve afectada: el misil solo daña tanques |
+| Mina sobre otra mina, o fuera del tablero | No se lanza y no gasta munición; el turno se pierde |
 | `REPARAR` con la vida al máximo | No hace nada y **no gasta** el uso |
 | Refacción con la vida al máximo | Se recoge y se pierde |
 | Destruido sobre una refacción | No puede darse: entrar a la casilla ya la recoge. El motor igual deja una sola |
@@ -206,7 +261,7 @@ propia mina dos turnos después de ponerla.
 | El choque destruye al embestido | El embestidor no ocupa la casilla; ambos se quedan donde estaban |
 | Todos destruidos en el mismo turno | Desempatan por daño infligido los que cayeron en ese turno |
 | Partida con un solo tanque | Juega hasta el límite de rondas y gana por desempate |
-| Muere el dueño de una mina sin armar | Con `turnos_propietario` la mina pasa a armarse por rondas |
+| Muere el dueño de una mina sin armar | Se arma igual al llegar su ronda |
 
 El orden rotativo gira sobre la lista completa de tanques, vivos o no, y
 después descarta a los destruidos; así la rotación no se descoloca cuando
@@ -227,7 +282,7 @@ partidas distintas en cada simulador.
 | Decisión | Dónde está | Motivo |
 |---|---|---|
 | El programa se reinicia al agotarse | `Programa.en()` | Un tanque sin instrucciones que ejecutar quedaría inerte el resto de la partida |
-| Las coordenadas son base 1, `(x, y)` = (columna, fila), fila 1 al norte | `modelo/direccion.py` | Coincide con cómo se escribió `MISIL(x,y)` en clase |
-| `DAÑAR` y `DANAR` se aceptan igual | `lenguaje/sintactico.py` | Un archivo ajeno puede venir sin acentos según el editor |
+| Las coordenadas son base 1, `(x, y)` = (columna, fila), fila 1 al norte | `modelo/direccion.py` | Coincide con lo visto en clase; el ejemplo de `MINA` del profesor usa (2,2) como centro de 3 x 3 |
+| `DAÑAR`/`DANAR` y `RADAR` suelto dan un error que explica el cambio | `lenguaje/sintactico.py` | Los archivos escritos con las reglas anteriores dicen qué corregir |
 | Se reportan todos los errores de sintaxis, no solo el primero | `lenguaje/interprete.py` | Corregir un archivo error por error es inviable |
 | El léxico y la sintaxis son dos fases separadas | `lenguaje/` | Responde a la pregunta del profesor sobre el intérprete lexicográfico |

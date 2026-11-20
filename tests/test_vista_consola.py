@@ -56,21 +56,20 @@ def test_el_escudo_se_marca_con_corchetes():
 
 
 def test_mina_sin_armar_y_armada():
-    m = motor(("a", "MINA\nMOV(S)\nESPERAR", (1, 1)),
-              ("b", "ESPERAR", (8, 8)))
+    m = motor(("a", "MINA(S,E)\nESPERAR", (1, 1)),
+              ("b", "ESPERAR", (8, 8)), mina_rondas_armado=1)
     m.ronda()
+    assert casilla(dibujar_tablero(m.estado()), 2, 2) == "  o "
     m.ronda()
-    assert casilla(dibujar_tablero(m.estado()), 1, 1) == "  o "
-    m.ronda()
-    assert casilla(dibujar_tablero(m.estado()), 1, 1) == "  * "
+    assert casilla(dibujar_tablero(m.estado()), 2, 2) == "  * "
 
 
 def test_la_refaccion_y_el_tanque_destruido():
-    m = motor(("a", "MISIL(5,5)", (1, 1)), ("b", "ESPERAR", (5, 5)),
-              ("c", "ESPERAR", (8, 8)), vida_inicial=30)
+    m = motor(("a", "MISIL(S)", (1, 1)), ("b", "ESPERAR", (1, 5)),
+              ("c", "ESPERAR", (8, 8)), vida_inicial=10)
     m.paso()
     t = dibujar_tablero(m.estado())
-    assert casilla(t, 5, 5) == "  + "
+    assert casilla(t, 1, 5) == "  + "
 
 
 def test_el_tablero_respeta_las_dimensiones():
@@ -90,21 +89,29 @@ def test_barra_de_vida(vida, barra):
 
 
 def test_el_panel_muestra_el_estado_de_cada_tanque():
-    m = motor(("a", "MISIL(8,8)", (1, 1)), ("b", "ESPERAR", (8, 8)))
+    m = motor(("a", "MISIL(E)", (1, 1)), ("b", "ESPERAR", (8, 1)))
     m.paso()
-    panel = dibujar_panel(m.estado(), {"a": "MISIL(8,8)"},
+    panel = dibujar_panel(m.estado(), {"a": "MISIL(E)"},
                           100).splitlines()
     assert panel[0].startswith("#1 a")
-    assert "misiles 2" in panel[0] and "daño   30" in panel[0]
-    assert panel[0].endswith("L1 MISIL(8,8)")
-    assert " 70 " in panel[1]
+    assert "misiles 2" in panel[0] and "daño    10" in panel[0]
+    assert panel[0].endswith("L1 MISIL(E)")
+    assert " 90 " in panel[1]
+
+
+def test_el_panel_muestra_el_escudo_y_las_fracciones():
+    m = motor(("a", "ESCUDO", (1, 1)), ("b", "ESPERAR", (8, 8)))
+    m.paso()
+    m.registro.tanques[0].vida = 92.5
+    panel = dibujar_panel(m.estado(), {}, 100).splitlines()
+    assert "esc 20" in panel[0] and "92.5" in panel[0]
 
 
 def test_la_columna_de_dano_se_alinea_con_los_destruidos():
-    m = motor(("a", "MISIL(5,5)", (1, 1)), ("b", "ESPERAR", (5, 5)),
-              ("c", "ESPERAR", (8, 8)), vida_inicial=30)
+    m = motor(("a", "MISIL(S)", (1, 1)), ("b", "ESPERAR", (1, 5)),
+              ("c", "ESPERAR", (8, 8)), vida_inicial=10)
     m.paso()
-    panel = dibujar_panel(m.estado(), {}, 30).splitlines()
+    panel = dibujar_panel(m.estado(), {}, 10).splitlines()
     assert "destruido" in panel[1]
     assert len({linea.index("daño") for linea in panel}) == 1
 

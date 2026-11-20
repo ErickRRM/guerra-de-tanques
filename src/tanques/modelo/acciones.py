@@ -4,16 +4,18 @@ El motor no sabe qué hace cada instrucción: busca en `ACCIONES` la clase
 registrada con el nombre del tipo y le delega el turno. Añadir una
 instrucción es escribir una clase nueva aquí, sin tocar el motor.
 
+El daño no es una instrucción: es lo que provocan las armas, los choques y
+las minas, y lo reparte `Motor.aplicar_dano`.
+
 Las instrucciones se reconocen por `instruccion.tipo.name` y no importando
 el enum de `lenguaje/`, para que el modelo siga sin depender de ninguna otra
 capa. Lo único que se espera de una instrucción son los atributos `tipo`,
-`direccion`, `x`, `y`, `condicion` y `accion`.
+`direccion`, `direccion2`, `condicion` y `accion`.
 """
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from ..config import ModoRadar
 from .entidades import Mina, Tanque
 from .eventos import TipoEvento
 
@@ -42,7 +44,7 @@ def registrar(nombre: str):
 # ------------------------------------------------------------- movimiento
 @registrar("MOV")
 class Mover(Accion):
-    """Avanza una casilla. Pared: 5 puntos. Tanque: choque como DAÑAR."""
+    """Avanza una casilla. Contra la pared o contra un tanque, choca."""
 
     def ejecutar(self, motor, tanque, instruccion):
         d = instruccion.direccion
@@ -54,8 +56,7 @@ class Mover(Accion):
                          f"{tanque.nombre} choca contra la pared al {d.name}",
                          tanque, choque="pared", direccion=d.name)
             motor.aplicar_dano(tanque, motor.config.dano.choque_pared,
-                               autor=None, origen="pared",
-                               bloqueable=False)
+                               autor=None, origen="pared")
             return
 
         otro = motor.registro.tanque_en(destino)
@@ -76,7 +77,7 @@ class Mover(Accion):
 # ------------------------------------------------------------- armamento
 @registrar("AMT")
 class Ametralladora(Accion):
-    """10 puntos al primer tanque en la línea. Munición ilimitada."""
+    """Daño base al primer tanque en la línea. Munición ilimitada."""
 
     def ejecutar(self, motor, tanque, instruccion):
         d = instruccion.direccion
@@ -99,91 +100,104 @@ class Ametralladora(Accion):
 
 @registrar("MISIL")
 class Misil(Accion):
-    """30 puntos al tanque de la casilla. Gasta munición aunque falle."""
+    """En línea recta, como la ametralladora, con el doble de daño.
+
+    Gasta munición aunque no alcance a nadie.
+    """
 
     def ejecutar(self, motor, tanque, instruccion):
-        destino = (instruccion.x, instruccion.y)
+        d = instruccion.direccion
+        tanque.ultima_direccion = d
         if tanque.misiles <= 0:
             motor.emitir(TipoEvento.SIN_EFECTO,
                          f"{tanque.nombre} no tiene misiles", tanque)
             return
         tanque.misiles -= 1
-        objetivo = motor.registro.tanque_en(destino)
+        objetivo = motor.primer_tanque(tanque, d)
         if objetivo is None:
             motor.emitir(TipoEvento.DISPARO,
-                         f"{tanque.nombre} lanza un misil a {destino}; "
-                         f"la casilla está vacía", tanque,
-                         arma="misil", destino=destino)
+                         f"{tanque.nombre} lanza un misil al {d.name} y no "
+                         f"alcanza a nadie", tanque,
+                         arma="misil", direccion=d.name)
             return
         motor.emitir(TipoEvento.DISPARO,
-                     f"{tanque.nombre} lanza un misil a {destino} "
+                     f"{tanque.nombre} lanza un misil al {d.name} "
                      f"contra {objetivo.nombre}", tanque,
-                     arma="misil", destino=destino,
+                     arma="misil", direccion=d.name,
                      objetivo=objetivo.nombre)
         motor.aplicar_dano(objetivo, motor.config.dano.misil,
                            autor=tanque, origen="misil")
 
 
 @registrar("MINA")
-class ColocarMina(Accion):
-    """Mina en la casilla actual. Requiere munición y casilla sin mina."""
+class LanzarMina(Accion):
+    """Lanza una mina a una esquina contigua: MINA(N,E) cae en (x+1, y-1).
+
+    Si la esquina queda fuera del tablero o ya tiene mina, no pasa nada y
+    no se gasta munición. Con armado inmediato, si cae sobre un tanque
+    estalla en ese momento.
+    """
 
     def ejecutar(self, motor, tanque, instruccion):
+        vertical, horizontal = instruccion.direccion, instruccion.direccion2
+        x, y = tanque.posicion
+        destino = (x + horizontal.dx, y + vertical.dy)
+        esquina = f"{vertical.name}{horizontal.name}"
         if tanque.minas <= 0:
             motor.emitir(TipoEvento.SIN_EFECTO,
                          f"{tanque.nombre} no tiene minas", tanque)
             return
-        if motor.registro.mina_en(tanque.posicion) is not None:
+        if not motor.tablero.dentro(*destino):
             motor.emitir(TipoEvento.SIN_EFECTO,
-                         f"{tanque.nombre} no puede colocar otra mina en "
-                         f"{tanque.posicion}", tanque)
+                         f"{tanque.nombre} no puede lanzar una mina al "
+                         f"{esquina}: cae fuera del tablero", tanque)
+            return
+        if motor.registro.mina_en(destino) is not None:
+            motor.emitir(TipoEvento.SIN_EFECTO,
+                         f"{tanque.nombre} no puede lanzar otra mina a "
+                         f"{destino}", tanque)
             return
         tanque.minas -= 1
-        mina = Mina(tanque.posicion, tanque,
-                    faltan=motor.config.mina_turnos_armado,
-                    ronda_colocada=motor.ronda_actual,
-                    turno_colocada=tanque.turnos)
+        rondas = motor.config.mina_rondas_armado
+        mina = Mina(destino, tanque,
+                    ronda_armado=motor.ronda_actual + rondas,
+                    armada=rondas <= 0)
         motor.registro.minas.append(mina)
         motor.emitir(TipoEvento.MINA_COLOCADA,
-                     f"{tanque.nombre} coloca una mina en {mina.posicion}",
-                     tanque, posicion=mina.posicion)
+                     f"{tanque.nombre} lanza una mina al {esquina}, a "
+                     f"{destino}", tanque, posicion=destino,
+                     desde=tanque.posicion)
         if mina.armada:
             motor.emitir(TipoEvento.MINA_ARMADA,
-                         f"La mina de {tanque.nombre} en {mina.posicion} "
-                         f"está armada", tanque, posicion=mina.posicion)
-
-
-@registrar("DANAR")
-class Embestir(Accion):
-    """Embiste al tanque contiguo: 15 puntos a cada uno."""
-
-    def ejecutar(self, motor, tanque, instruccion):
-        d = instruccion.direccion
-        tanque.ultima_direccion = d
-        otro = motor.registro.tanque_en(
-            motor.tablero.vecina(tanque.posicion, d))
-        if otro is None:
-            motor.emitir(TipoEvento.SIN_EFECTO,
-                         f"{tanque.nombre} embiste al {d.name} pero no hay "
-                         f"nadie", tanque, direccion=d.name)
-            return
-        motor.chocar(tanque, otro)
+                         f"La mina de {tanque.nombre} en {destino} "
+                         f"está armada", tanque, posicion=destino)
+            motor.detonar_si_ocupada(mina)
 
 
 # ------------------------------------------------------------- defensa
 @registrar("ESCUDO")
 class Escudo(Accion):
-    """Inmunidad hasta el inicio del siguiente turno del tanque."""
+    """Vida extra: absorbe daño hasta agotarse.
+
+    Activarlo lo recarga hasta su valor configurado; no se acumula.
+    """
 
     def ejecutar(self, motor, tanque, instruccion):
-        tanque.escudo = True
+        puntos = motor.config.escudo_puntos
+        if tanque.escudo >= puntos:
+            motor.emitir(TipoEvento.SIN_EFECTO,
+                         f"{tanque.nombre} ya tiene el escudo completo",
+                         tanque)
+            return
+        tanque.escudo = puntos
         motor.emitir(TipoEvento.ESCUDO,
-                     f"{tanque.nombre} activa el escudo", tanque)
+                     f"{tanque.nombre} activa el escudo ({puntos:g})",
+                     tanque, puntos=puntos)
 
 
 @registrar("REPARAR")
 class Reparar(Accion):
-    """+20 de vida sin pasar del máximo. Un uso por partida.
+    """Recupera vida sin pasar del máximo. Un uso por partida.
 
     Con la vida al máximo no hace nada y no gasta el uso: perderlo por
     haberlo pedido antes de tiempo castigaría un programa ajeno por algo
@@ -205,28 +219,12 @@ class Reparar(Accion):
         tanque.vida = min(tanque.vida_maxima,
                           tanque.vida + motor.config.reparar_puntos)
         motor.emitir(TipoEvento.REPARACION,
-                     f"{tanque.nombre} se repara +{tanque.vida - antes} "
-                     f"(vida {tanque.vida})", tanque,
+                     f"{tanque.nombre} se repara +{tanque.vida - antes:g} "
+                     f"(vida {tanque.vida:g})", tanque,
                      puntos=tanque.vida - antes)
 
 
 # ------------------------------------------------------------- otras
-@registrar("RADAR")
-class Radar(Accion):
-    """Mide la distancia al primer elemento y la guarda para el IF."""
-
-    def ejecutar(self, motor, tanque, instruccion):
-        d = instruccion.direccion
-        tanque.ultima_direccion = d
-        lectura = motor.explorar(tanque, d)
-        tanque.ultimo_radar = (d, lectura)
-        que = "enemigo" if lectura > 0 else "pared"
-        motor.emitir(TipoEvento.RADAR,
-                     f"{tanque.nombre} explora al {d.name}: {que} a "
-                     f"{abs(lectura)}", tanque,
-                     direccion=d.name, lectura=lectura)
-
-
 @registrar("ESPERAR")
 class Esperar(Accion):
     def ejecutar(self, motor, tanque, instruccion):
@@ -241,29 +239,24 @@ class Si(Accion):
     def ejecutar(self, motor, tanque, instruccion):
         condicion = instruccion.condicion
         lectura = self._leer(motor, tanque, condicion)
-        if lectura is None or not condicion.evalua(lectura):
-            valor = "sin lectura" if lectura is None else lectura
+        if not condicion.evalua(lectura):
             motor.emitir(TipoEvento.CONDICION_FALSA,
                          f"{tanque.nombre}: {condicion} es falso "
-                         f"({valor})", tanque)
+                         f"({lectura:g})", tanque)
             return
         motor.ejecutar_instruccion(tanque, instruccion.accion)
 
     @staticmethod
     def _leer(motor, tanque, condicion):
-        """Valor que se compara; None si no hay lectura que usar (D-01)."""
+        """Valor que se compara. RADAR explora en el momento de evaluar."""
         if condicion.fuente.name == "VIDA":
             return tanque.vida
-
         d = condicion.direccion
-        previa = tanque.ultimo_radar
-        tiene_previa = previa is not None and previa[0] is d
-        modo = motor.config.modo_radar
-
-        if modo is ModoRadar.DIRECTO:
-            return motor.explorar(tanque, d)
-        if tiene_previa:
-            return previa[1]
-        if modo is ModoRadar.REGISTRO:
-            return None
-        return motor.explorar(tanque, d)          # híbrido sin lectura previa
+        tanque.ultima_direccion = d
+        lectura = motor.explorar(tanque, d)
+        que = "enemigo" if lectura > 0 else "pared"
+        motor.emitir(TipoEvento.RADAR,
+                     f"{tanque.nombre} explora al {d.name}: {que} a "
+                     f"{abs(lectura)}", tanque,
+                     direccion=d.name, lectura=lectura)
+        return lectura

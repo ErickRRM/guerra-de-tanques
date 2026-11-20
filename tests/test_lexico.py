@@ -19,10 +19,14 @@ def test_reconoce_palabra_parentesis_y_direccion():
                                TipoToken.DIRECCION, TipoToken.PAR_DER]
 
 
-def test_reconoce_la_coma_y_los_enteros():
-    assert tipos("MISIL(3,5)") == [
-        TipoToken.PALABRA, TipoToken.PAR_IZQ, TipoToken.ENTERO,
-        TipoToken.COMA, TipoToken.ENTERO, TipoToken.PAR_DER]
+def test_reconoce_la_coma():
+    assert tipos("MINA(N,E)") == [
+        TipoToken.PALABRA, TipoToken.PAR_IZQ, TipoToken.DIRECCION,
+        TipoToken.COMA, TipoToken.DIRECCION, TipoToken.PAR_DER]
+
+
+def test_reconoce_los_enteros():
+    assert tipos("VIDA < 40")[2] is TipoToken.ENTERO
 
 
 @pytest.mark.parametrize("op", [">", "<", ">=", "<=", "=="])
@@ -54,13 +58,23 @@ def test_una_palabra_desconocida_se_clasifica_como_palabra():
 
 
 # ---------------------------------------------------------------- normalización
-def test_normaliza_a_mayusculas():
-    assert lexemas("mov(n)") == ["MOV", "(", "N", ")"]
+@pytest.mark.parametrize("texto", ["mov(N)", "MOV(n)", "Mov(N)",
+                                   "MINA(N,e)"])
+def test_las_minusculas_son_un_error(texto):
+    _, errores = AnalizadorLexico().analizar(texto, 1)
+    assert len(errores) == 1
+    assert "mayúsculas" in errores[0].mensaje
+
+
+def test_un_solo_error_por_linea_aunque_haya_varias_minusculas():
+    _, errores = AnalizadorLexico().analizar("if vida < 40 then reparar", 1)
+    assert len(errores) == 1
+    assert "'REPARAR'" in errores[0].mensaje
 
 
 def test_descarta_los_espacios():
-    assert lexemas("  MISIL (  3 ,  5 )  ") == \
-        ["MISIL", "(", "3", ",", "5", ")"]
+    assert lexemas("  MINA (  N ,  E )  ") == \
+        ["MINA", "(", "N", ",", "E", ")"]
 
 
 def test_descarta_el_comentario():

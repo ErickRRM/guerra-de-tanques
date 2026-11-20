@@ -72,9 +72,17 @@ class VistaBitacora(Vista):
         self._linea(f"Tablero        {estado.ancho} x {estado.alto}")
         self._linea(f"Rondas máximas {c.rondas_maximas}")
         self._linea(f"Vida inicial   {c.vida_inicial}")
-        self._linea(f"Reglas         radar {c.modo_radar.value} · turnos "
-                    f"{c.orden_turnos.value} · mina "
-                    f"{c.mina_turnos_armado} {c.mina_medida_armado.value} "
+        self._linea(f"Daño           AMT {c.dano.ametralladora:g} · misil "
+                    f"{c.dano.misil:g} · mina {c.dano.mina:g} · choque "
+                    f"{c.dano.choque_tanque:g} · pared "
+                    f"{c.dano.choque_pared:g}")
+        self._linea(f"Munición       misiles {c.municion.misiles} · minas "
+                    f"{c.municion.minas}")
+        self._linea(f"Defensa        reparar +{c.reparar_puntos} · escudo "
+                    f"{c.escudo_puntos} · refacción "
+                    f"{c.refaccion.minimo}-{c.refaccion.maximo}")
+        self._linea(f"Reglas         turnos {c.orden_turnos.value} · mina "
+                    f"armada en {c.mina_rondas_armado} rondas "
                     f"· choque {c.acredita_choque.value}")
         self._linea("")
         self._linea("Tanques")
@@ -115,8 +123,8 @@ class VistaBitacora(Vista):
         self._linea("")
         self._linea(f"  {'tanque':<17} {'vida':>4}  {'daño infligido':>14}")
         for t in estado.tanques:
-            self._linea(f"  #{t.numero} {t.nombre:<14} {t.vida:>4}  "
-                        f"{t.dano_infligido:>14}")
+            self._linea(f"  #{t.numero} {t.nombre:<14} {t.vida:>4g}  "
+                        f"{t.dano_infligido:>14g}")
         self._flush()
         if self._ruta is not None and self._salida is not None:
             self._salida.close()

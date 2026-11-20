@@ -24,7 +24,8 @@ REFACCION = "#6A994E"
 ESCUDO = "#2E5E8C"
 ORUGA = "#484848"
 CANON = "#2B2B2B"
-COLORES_TANQUE = ("#2E5E8C", "#D97706", "#0F766E", "#6D4C9F")
+COLORES_TANQUE = ("#2E5E8C", "#D97706", "#0F766E", "#6D4C9F",
+                  "#BE185D", "#4D7C0F")
 
 
 def oscurecer(color: str, factor: float = 0.67) -> str:
@@ -70,7 +71,7 @@ def rectangulo(x0, y0, x1, y1, direccion, cx, cy, s) -> list[float]:
 
 # ------------------------------------------------------------ dibujo
 def tanque(canvas, cx: float, cy: float, s: float, numero: int, color: str,
-           direccion: Direccion = Direccion.N, escudo: bool = False,
+           direccion: Direccion = Direccion.N, escudo: float = 0,
            etiqueta: str = "tanque"):
     """Dibuja un tanque centrado en (cx, cy) dentro de una casilla de lado s."""
     tags = (etiqueta, f"{etiqueta}{numero}")

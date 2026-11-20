@@ -28,12 +28,10 @@ def test_los_programas_declarados_existen():
 
 
 # ------------------------------------------------------- las decisiones
-def test_las_cuatro_decisiones_tienen_el_valor_acordado():
+def test_las_decisiones_tienen_el_valor_acordado():
     c = cfg.cargar(RAIZ / "config.json")
-    assert c.modo_radar is cfg.ModoRadar.HIBRIDO
     assert c.orden_turnos is cfg.OrdenTurnos.ROTATIVO
-    assert c.mina_turnos_armado == 2
-    assert c.mina_medida_armado is cfg.MedidaArmado.TURNOS_PROPIETARIO
+    assert c.mina_rondas_armado == 0          # la mina se activa de inmediato
     assert c.acredita_choque is cfg.AcreditaChoque.EMBESTIDOR
 
 
@@ -41,22 +39,74 @@ def test_las_decisiones_se_pueden_cambiar_desde_el_json():
     c = cfg.desde_diccionario({
         "tanques": [{"nombre": "a", "programa": "a.txt"}],
         "reglas": {
-            "modo_radar": "registro",
             "orden_turnos": "aleatorio",
             "acredita_choque": "ambos",
-            "mina": {"turnos_armado": 3, "medida": "rondas"},
+            "mina": {"rondas_armado": 1},
         },
     })
-    assert c.modo_radar is cfg.ModoRadar.REGISTRO
     assert c.orden_turnos is cfg.OrdenTurnos.ALEATORIO
     assert c.acredita_choque is cfg.AcreditaChoque.AMBOS
-    assert c.mina_turnos_armado == 3
-    assert c.mina_medida_armado is cfg.MedidaArmado.RONDAS
+    assert c.mina_rondas_armado == 1
+
+
+# ------------------------------------------------- valores del reglamento
+def test_los_valores_por_omision_son_los_del_reglamento():
+    c = cfg.Configuracion()
+    assert c.vida_inicial == 100
+    assert (c.municion.misiles, c.municion.minas) == (3, 3)
+    assert c.dano.ametralladora == 5
+    assert (c.dano.choque_pared, c.dano.choque_tanque) == (12, 12)
+    assert c.reparar_puntos == 20
+    assert (c.refaccion.minimo, c.refaccion.maximo) == (15, 35)
+    assert cfg.REPARACIONES_POR_PARTIDA == 1
+    assert cfg.MAX_TANQUES == 6
+
+
+@pytest.mark.parametrize("amt, misil, mina", [(5, 10, 7.5), (8, 16, 12),
+                                              (20, 40, 30)])
+def test_misil_y_mina_se_derivan_de_la_ametralladora_sin_redondear(
+        amt, misil, mina):
+    d = cfg.Dano(ametralladora=amt)
+    assert (d.misil, d.mina) == (misil, mina)
+
+
+@pytest.mark.parametrize("datos, aviso", [
+    ({"dano": {"ametralladora": 4}}, "ametralladora"),
+    ({"dano": {"ametralladora": 21}}, "ametralladora"),
+    ({"municion": {"misiles": 11}}, "misiles"),
+    ({"municion": {"minas": 11}}, "minas"),
+    ({"reparar_puntos": 14}, "REPARAR"),
+    ({"reparar_puntos": 31}, "REPARAR"),
+    ({"escudo_puntos": 0}, "escudo"),
+    ({"reglas": {"mina": {"rondas_armado": -1}}}, "armado"),
+])
+def test_los_configurables_respetan_su_rango(datos, aviso):
+    datos = {"tanques": [{"nombre": "a", "programa": "a.txt"}], **datos}
+    problemas = cfg.desde_diccionario(datos).validar()
+    assert any(aviso in p for p in problemas), problemas
+
+
+@pytest.mark.parametrize("datos", [
+    {"dano": {"ametralladora": 5}}, {"dano": {"ametralladora": 20}},
+    {"municion": {"misiles": 10, "minas": 10}},
+    {"reparar_puntos": 15}, {"reparar_puntos": 30},
+])
+def test_los_extremos_del_rango_son_validos(datos):
+    datos = {"tanques": [{"nombre": "a", "programa": "a.txt"}], **datos}
+    assert cfg.desde_diccionario(datos).validar() == []
+
+
+def test_como_maximo_seis_tanques():
+    def con(n):
+        return cfg.desde_diccionario({"tanques": [
+            {"nombre": f"t{i}", "programa": "x.txt"} for i in range(n)]})
+    assert con(6).validar() == []
+    assert any("6 tanques" in p for p in con(7).validar())
 
 
 def test_un_valor_mal_escrito_se_avisa_con_las_opciones():
-    with pytest.raises(ValueError, match="hibrido"):
-        cfg.desde_diccionario({"reglas": {"modo_radar": "mágico"}})
+    with pytest.raises(ValueError, match="rotativo"):
+        cfg.desde_diccionario({"reglas": {"orden_turnos": "mágico"}})
 
 
 def test_no_distingue_mayusculas_ni_espacios():
@@ -69,8 +119,8 @@ def test_un_json_minimo_toma_los_valores_por_omision():
     c = cfg.desde_diccionario({"tanques": [{"nombre": "a", "programa": "a.txt"}]})
     por_omision = cfg.Configuracion()
     assert c.tablero == por_omision.tablero
-    assert c.modo_radar is por_omision.modo_radar
-    assert c.dano.ametralladora == 10
+    assert c.orden_turnos is por_omision.orden_turnos
+    assert c.dano == por_omision.dano
 
 
 def test_el_color_tiene_valor_por_omision():
@@ -116,13 +166,3 @@ def test_cargar_un_config_invalido_falla_con_el_detalle(tmp_path):
                                 "tanques": []}), encoding="utf-8")
     with pytest.raises(ValueError, match="malo.json"):
         cfg.cargar(ruta)
-
-
-# ------------------------------------------------- acoplamiento con el tablero
-def test_el_tablero_configurado_llega_al_validador():
-    """MISIL se valida contra el tamaño real del tablero, no contra 8 x 8."""
-    from tanques.lenguaje import Interprete
-    c = cfg.desde_diccionario({"tablero": {"ancho": 12, "alto": 12},
-                               "tanques": [{"nombre": "a", "programa": "a.txt"}]})
-    i = Interprete(c.tablero.ancho, c.tablero.alto)
-    assert i.analizar("MISIL(10,10)")[1] == []

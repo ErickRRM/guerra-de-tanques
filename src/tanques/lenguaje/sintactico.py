@@ -10,14 +10,18 @@ descenso recursivo de un solo nivel, sin tabla de análisis.
 
     instruccion  := simple | condicional
     simple       := con-direccion "(" direccion ")"
-                  | "MISIL" "(" entero "," entero ")"
+                  | "MINA" "(" direccion "," direccion ")"
                   | sin-parametros
+    con-direccion:= "MOV" | "AMT" | "MISIL"
+    sin-parametros := "ESCUDO" | "REPARAR" | "ESPERAR"
     condicional  := "IF" condicion "THEN" accion
     condicion    := "RADAR" "(" direccion ")" relacional entero
                   | "VIDA" relacional entero
-    accion       := "AMT" "(" direccion ")"
-                  | "MISIL" "(" entero "," entero ")"
+    accion       := "AMT" "(" direccion ")" | "MISIL" "(" direccion ")"
                   | "ESCUDO" | "REPARAR"
+
+Las dos direcciones de MINA forman una esquina: una norte-sur y una
+este-oeste, en cualquier orden (`MINA(N,E)` o `MINA(E,N)`).
 """
 from __future__ import annotations
 
@@ -28,12 +32,13 @@ from .instrucciones import (ACCIONES_EN_IF, Condicion, Fuente, Instruccion,
 from .tokens import TipoToken, Token
 
 #: Palabras que introducen una instrucción con dirección.
-_CON_DIRECCION = {"MOV": Tipo.MOV, "AMT": Tipo.AMT, "RADAR": Tipo.RADAR,
-                  "DAÑAR": Tipo.DANAR, "DANAR": Tipo.DANAR}
+_CON_DIRECCION = {"MOV": Tipo.MOV, "AMT": Tipo.AMT, "MISIL": Tipo.MISIL}
 
 #: Palabras que forman una instrucción por sí solas.
-_SIN_PARAMETROS = {"MINA": Tipo.MINA, "ESCUDO": Tipo.ESCUDO,
-                   "REPARAR": Tipo.REPARAR, "ESPERAR": Tipo.ESPERAR}
+_SIN_PARAMETROS = {"ESCUDO": Tipo.ESCUDO, "REPARAR": Tipo.REPARAR,
+                   "ESPERAR": Tipo.ESPERAR}
+
+_NORTE_SUR = (Direccion.N, Direccion.S)
 
 
 class ErrorAnalisis(Exception):
@@ -110,11 +115,16 @@ class AnalizadorSintactico:
             return Instruccion(tipo=_CON_DIRECCION[token.lexema],
                                direccion=direccion, linea=linea)
 
-        if token.lexema == "MISIL":
+        if token.lexema == "MINA":
             self._avanza()
-            x, y = self._parentesis_coordenada()
-            return Instruccion(tipo=Tipo.MISIL, x=x, y=y, linea=linea)
+            vertical, horizontal = self._parentesis_esquina()
+            return Instruccion(tipo=Tipo.MINA, direccion=vertical,
+                               direccion2=horizontal, linea=linea)
 
+        if token.lexema == "RADAR":
+            raise ErrorAnalisis(err.radar_suelto())
+        if token.lexema in ("DAÑAR", "DANAR"):
+            raise ErrorAnalisis(err.danar_no_es_instruccion())
         raise ErrorAnalisis(err.desconocida(self._texto))
 
     def _condicional(self, linea: int) -> Instruccion:
@@ -162,19 +172,24 @@ class AnalizadorSintactico:
             raise ErrorAnalisis(err.desconocida(self._texto))
         return Direccion.desde_texto(token.lexema)
 
-    def _parentesis_coordenada(self) -> tuple[int, int]:
+    def _parentesis_esquina(self) -> tuple[Direccion, Direccion]:
+        """`(N,E)`: devuelve (norte-sur, este-oeste)."""
         if not self._acepta(TipoToken.PAR_IZQ):
-            raise ErrorAnalisis(err.desconocida(self._texto))
-        x = self._entero()
-        if not self._acepta(TipoToken.COMA):
-            raise ErrorAnalisis(err.desconocida(self._texto))
-        y = self._entero()
+            raise ErrorAnalisis(err.direcciones_mina(self._texto))
+        direcciones = []
+        for k in range(2):
+            if k and not self._acepta(TipoToken.COMA):
+                raise ErrorAnalisis(err.direcciones_mina(self._texto))
+            token = self._avanza()
+            if token.tipo is not TipoToken.DIRECCION:
+                raise ErrorAnalisis(err.direccion_invalida(token.lexema))
+            direcciones.append(Direccion.desde_texto(token.lexema))
         if not self._acepta(TipoToken.PAR_DER):
-            raise ErrorAnalisis(err.desconocida(self._texto))
-        if not (1 <= x <= self.ancho and 1 <= y <= self.alto):
-            raise ErrorAnalisis(
-                err.fuera_del_tablero(x, y, self.ancho, self.alto))
-        return x, y
+            raise ErrorAnalisis(err.direcciones_mina(self._texto))
+        a, b = direcciones
+        if (a in _NORTE_SUR) == (b in _NORTE_SUR):
+            raise ErrorAnalisis(err.direcciones_mina(self._texto))
+        return (a, b) if a in _NORTE_SUR else (b, a)
 
     def _relacional(self) -> Operador:
         token = self._actual

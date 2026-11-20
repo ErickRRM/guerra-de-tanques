@@ -1,6 +1,6 @@
 # Cazador — agresivo: patrulla un cuadro de 2 x 2 disparando a los cuatro lados
 # Las salidas y vueltas se compensan, así que no se estrella contra la pared.
-# El IF explora por su cuenta (modo híbrido), sin gastar un turno en RADAR.
+# El IF explora por su cuenta en el momento: no hace falta un RADAR antes.
 IF RADAR(N) > 0 THEN AMT(N)
 IF RADAR(E) > 0 THEN AMT(E)
 MOV(E)
