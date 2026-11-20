@@ -14,7 +14,7 @@ from ..lenguaje import formato_errores
 from ..vista import VistaBitacora, VistaMultiple
 from ..vista.bitacora import ruta_por_omision
 from ..vista.grafica import AppGrafica
-from .partida import ejecutar, preparar
+from .partida import ejecutar, lineas_saltadas, preparar
 
 
 def aplicacion(config: Configuracion, raiz: str | Path) -> int:
@@ -62,7 +62,8 @@ def _validar(app: AppGrafica, config: Configuracion, raiz: Path) -> bool:
 def _jugar(app, config, raiz, velocidad) -> tuple[str, int]:
     """Una partida. Devuelve lo que eligió el usuario al final."""
     motor, _ = preparar(config, raiz)
-    ventana = app.partida(config, velocidad)
+    ventana = app.partida(config, velocidad,
+                          saltadas=lineas_saltadas(config, raiz))
     bitacora = VistaBitacora(ruta_por_omision(raiz / "bitacoras",
                                               config.semilla), config)
     ejecutar(motor, VistaMultiple(ventana, bitacora))

@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from tanques import config as cfg
-from tanques.controlador import preparar
+from tanques.controlador import lineas_saltadas, preparar
 from tanques.lenguaje import Interprete, formato_errores
 from tanques.modelo import Direccion, Motivo, Motor, TipoEvento
 
@@ -86,11 +86,40 @@ def test_la_configuracion_del_repositorio_arranca():
     assert m.terminada()
 
 
-def test_un_programa_con_errores_no_arranca(tmp_path):
+def test_un_programa_sin_ninguna_linea_valida_no_arranca(tmp_path):
     (tmp_path / "malo.txt").write_text("DISPARAR\n", encoding="utf-8")
     c = replace(BASE, tanques=(cfg.TanqueConfig("malo", "malo.txt"),))
     m, errores = preparar(c, tmp_path)
-    assert m is None and len(errores) == 1
+    assert m is None
+    assert any("DISPARAR" in e.mensaje for e in errores)
+    assert any("nada que ejecutar" in e.mensaje for e in errores)
+
+
+def test_las_lineas_con_errores_se_saltan_y_la_partida_sigue(tmp_path):
+    (tmp_path / "a.txt").write_text("MOV(E)\nDISPARAR\nmov(e)\nMOV(E)\n",
+                                    encoding="utf-8")
+    (tmp_path / "b.txt").write_text("ESPERAR\n", encoding="utf-8")
+    c = replace(BASE, tanques=(cfg.TanqueConfig("a", "a.txt"),
+                               cfg.TanqueConfig("b", "b.txt")))
+    m, errores = preparar(c, tmp_path)
+    assert m is not None and errores == []
+    assert [e.linea for e in lineas_saltadas(c, tmp_path)] == [2, 3]
+    a = tanque(m, "a")
+    a.posicion = (1, 1)
+    tanque(m, "b").posicion = (8, 8)
+    lineas = []
+    for _ in range(3):
+        lineas += [e.datos["linea"] for e in m.ronda()
+                   if e.tipo is TipoEvento.INSTRUCCION and e.tanque == "a"]
+    # Las líneas 2 y 3 nunca se ejecutan: después de la 1 viene la 4.
+    assert lineas == [1, 4, 1]
+    assert a.posicion == (4, 1)
+
+
+def test_un_archivo_que_no_existe_no_arranca(tmp_path):
+    c = replace(BASE, tanques=(cfg.TanqueConfig("x", "no_existe.txt"),))
+    m, errores = preparar(c, tmp_path)
+    assert m is None and "no existe" in errores[0].mensaje
 
 
 # ---------------------------------------------------------------- turnos
@@ -252,7 +281,7 @@ def test_la_cantidad_de_misiles_es_configurable():
 
 
 def test_misil_pasa_sobre_las_minas_sin_tocarlas():
-    m = motor(("a", "MINA(S,E)\nESPERAR", (1, 1)),
+    m = motor(("a", "MINA(SE)\nESPERAR", (1, 1)),
               ("b", "ESPERAR\nMISIL(N)", (2, 5)))
     m.ronda()
     m.ronda()
@@ -324,8 +353,8 @@ def test_embestir_a_un_tanque_con_escudo():
 
 # ---------------------------------------------------------------- minas
 @pytest.mark.parametrize("texto, destino", [
-    ("MINA(N,E)", (4, 2)), ("MINA(N,O)", (2, 2)),
-    ("MINA(S,E)", (4, 4)), ("MINA(S,O)", (2, 4)),
+    ("MINA(NE)", (4, 2)), ("MINA(NO)", (2, 2)),
+    ("MINA(SE)", (4, 4)), ("MINA(SO)", (2, 4)),
 ])
 def test_la_mina_se_lanza_a_la_esquina(texto, destino):
     m = motor(("a", texto, (3, 3)), ("b", "ESPERAR", (8, 8)))
@@ -335,14 +364,14 @@ def test_la_mina_se_lanza_a_la_esquina(texto, destino):
 
 
 def test_la_mina_se_activa_de_inmediato():
-    m = motor(("a", "MINA(S,E)", (1, 1)), ("b", "ESPERAR", (8, 8)))
+    m = motor(("a", "MINA(SE)", (1, 1)), ("b", "ESPERAR", (8, 8)))
     eventos = m.paso()
     assert m.registro.minas[0].armada
     assert TipoEvento.MINA_ARMADA in tipos(eventos)
 
 
 def test_la_mina_puede_armarse_en_n_rondas():
-    m = motor(("a", "MINA(S,E)\nESPERAR", (1, 1)), ("b", "ESPERAR", (8, 8)),
+    m = motor(("a", "MINA(SE)\nESPERAR", (1, 1)), ("b", "ESPERAR", (8, 8)),
               mina_rondas_armado=2)
     m.ronda()
     m.ronda()
@@ -353,20 +382,20 @@ def test_la_mina_puede_armarse_en_n_rondas():
 
 
 def test_mina_fuera_del_tablero_no_gasta_municion():
-    m = motor(("a", "MINA(N,O)", (1, 1)), ("b", "ESPERAR", (8, 8)))
+    m = motor(("a", "MINA(NO)", (1, 1)), ("b", "ESPERAR", (8, 8)))
     assert TipoEvento.SIN_EFECTO in tipos(m.paso())
     assert (m.registro.minas, tanque(m, "a").minas) == ([], 3)
 
 
 def test_no_se_lanza_una_mina_sobre_otra():
-    m = motor(("a", "MINA(S,E)", (1, 1)), ("b", "ESPERAR", (8, 8)))
+    m = motor(("a", "MINA(SE)", (1, 1)), ("b", "ESPERAR", (8, 8)))
     m.ronda()
     m.ronda()
     assert (len(m.registro.minas), tanque(m, "a").minas) == (1, 2)
 
 
 def test_la_mina_estalla_si_cae_sobre_un_tanque():
-    m = motor(("a", "MINA(S,E)", (1, 1)), ("b", "ESPERAR", (2, 2)))
+    m = motor(("a", "MINA(SE)", (1, 1)), ("b", "ESPERAR", (2, 2)))
     eventos = m.paso()
     assert TipoEvento.MINA_EXPLOTA in tipos(eventos)
     assert tanque(m, "b").vida == 92.5          # 1.5 x 5, sin redondear
@@ -375,7 +404,7 @@ def test_la_mina_estalla_si_cae_sobre_un_tanque():
 
 
 def test_la_mina_sin_armar_no_estalla_bajo_un_tanque_quieto():
-    m = motor(("a", "MINA(S,E)\nESPERAR", (1, 1)),
+    m = motor(("a", "MINA(SE)\nESPERAR", (1, 1)),
               ("b", "ESPERAR", (2, 2)), mina_rondas_armado=1)
     for _ in range(3):
         m.ronda()
@@ -384,7 +413,7 @@ def test_la_mina_sin_armar_no_estalla_bajo_un_tanque_quieto():
 
 
 def test_pisar_una_mina_armada():
-    m = motor(("a", "MINA(S,E)", (1, 1)), ("b", "MOV(O)", (3, 2)))
+    m = motor(("a", "MINA(SE)", (1, 1)), ("b", "MOV(O)", (3, 2)))
     m.ronda()
     b = tanque(m, "b")
     assert (b.posicion, b.vida) == ((2, 2), 92.5)
@@ -392,7 +421,7 @@ def test_pisar_una_mina_armada():
 
 
 def test_volver_a_la_propia_mina():
-    m = motor(("a", "MINA(S,E)\nMOV(E)\nMOV(S)", (1, 1)),
+    m = motor(("a", "MINA(SE)\nMOV(E)\nMOV(S)", (1, 1)),
               ("b", "ESPERAR", (8, 8)))
     for _ in range(3):
         m.ronda()
@@ -401,7 +430,7 @@ def test_volver_a_la_propia_mina():
 
 
 def test_el_escudo_absorbe_la_mina():
-    m = motor(("a", "ESPERAR\nMINA(S,E)", (1, 1)),
+    m = motor(("a", "ESPERAR\nMINA(SE)", (1, 1)),
               ("b", "ESCUDO\nMOV(O)", (3, 2)))
     m.ronda()                           # a espera; b activa el escudo
     m.ronda()                           # b entra a (2, 2); a le lanza la mina
@@ -421,13 +450,13 @@ def test_radar_distancia_negativa_a_la_pared():
 
 
 def test_radar_no_ve_las_minas():
-    m = motor(("a", "ESPERAR", (2, 3)), ("b", "MINA(N,O)", (3, 3)))
+    m = motor(("a", "ESPERAR", (2, 3)), ("b", "MINA(NO)", (3, 3)))
     m.ronda()                           # b lanza la mina a (2, 2)
     assert m.explorar(tanque(m, "a"), Direccion.N) == -3
 
 
 def test_if_falso_pierde_el_turno():
-    m = motor(("a", "IF VIDA < 50 THEN ESCUDO", (1, 1)),
+    m = motor(("a", "IF V < 50 THEN ESCUDO", (1, 1)),
               ("b", "ESPERAR", (8, 8)))
     assert TipoEvento.CONDICION_FALSA in tipos(m.paso())
     assert not tanque(m, "a").escudo
@@ -440,6 +469,21 @@ def test_if_verdadero_ejecuta_la_accion():
     assert tanque(m, "b").vida == 95
     radar = next(e for e in eventos if e.tipo is TipoEvento.RADAR)
     assert radar.datos["lectura"] == 4
+
+
+def test_if_puede_mover_al_tanque():
+    # (1,1) con la pared a 7 casillas al este: RADAR(E) es negativo
+    m = motor(("a", "IF RADAR(E) < -1 THEN MOV(E)", (1, 1)),
+              ("b", "ESPERAR", (8, 8)))
+    m.paso()
+    assert tanque(m, "a").posicion == (2, 1)
+
+
+def test_if_puede_lanzar_mina_y_esperar():
+    m = motor(("a", "IF V > 0 THEN MINA(SE)\nIF V > 0 THEN ESPERAR", (1, 1)),
+              ("b", "ESPERAR", (8, 8)))
+    m.ronda()
+    assert any(mina.posicion == (2, 2) for mina in m.registro.minas)
 
 
 def test_if_radar_explora_en_el_momento():

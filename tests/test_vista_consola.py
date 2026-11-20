@@ -56,7 +56,7 @@ def test_el_escudo_se_marca_con_corchetes():
 
 
 def test_mina_sin_armar_y_armada():
-    m = motor(("a", "MINA(S,E)\nESPERAR", (1, 1)),
+    m = motor(("a", "MINA(SE)\nESPERAR", (1, 1)),
               ("b", "ESPERAR", (8, 8)), mina_rondas_armado=1)
     m.ronda()
     assert casilla(dibujar_tablero(m.estado()), 2, 2) == "  o "

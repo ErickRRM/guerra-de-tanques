@@ -19,7 +19,7 @@ Orden de los turnos (rotativo)
 
 Desarrollo a mano  (vida, y entre corchetes el escudo)
     R1  A: IF RADAR(E) → B a 4; AMT(E) a B (95)
-        B: MINA(S,O) desde (6,2) cae en (5,3), armada; no hay nadie
+        B: MINA(SO) desde (6,2) cae en (5,3), armada; no hay nadie
         C: IF RADAR(N) → B a 4; AMT(N) a B (90)
     R2  B: MOV(S) → (6,3)
         C: MOV(N) → (6,5)
@@ -28,7 +28,7 @@ Desarrollo a mano  (vida, y entre corchetes el escudo)
         A: MISIL(E) pasa sobre la mina de (5,3) y da a B en (6,3) (80)
         B: MOV(O) → (5,3): pisa su propia mina, 7.5 autoinfligidos (72.5)
     R4  A: ESCUDO [20]
-        B: IF VIDA < 90 con 72.5: REPARAR (92.5); ya no le quedan usos
+        B: IF V < 90 con 72.5: REPARAR (92.5); ya no le quedan usos
         C: MOV(N) → (6,4)
     R5  B: MOV(E) → (6,3)
         C: IF RADAR(N) → B a 1; AMT(N) a B (87.5)
@@ -37,7 +37,7 @@ Desarrollo a mano  (vida, y entre corchetes el escudo)
         A: MOV(S) → (2,4)
         B: MOV(N) → (6,2)
     R7  A: MISIL(E) a C en (6,4): el escudo absorbe 8 [0], 2 a la vida (98)
-        B: MINA(S,O) a (5,3) otra vez, armada; no hay nadie
+        B: MINA(SO) a (5,3) otra vez, armada; no hay nadie
         C: ESCUDO, se recarga [20]
     R8  B: MOV(S) → (6,3)
         C: MOV(N) contra B: choque, B 58.5; C [8]
@@ -46,7 +46,7 @@ Desarrollo a mano  (vida, y entre corchetes el escudo)
         A: IF RADAR(E) → C a 4; AMT(E), el escudo absorbe los 5 [3]
         B: MOV(O) → (5,3): pisa su segunda mina (46)
     R10 A: MOV(S) → (2,5)
-        B: IF VIDA < 90 con 46: REPARAR, pero ya lo usó
+        B: IF V < 90 con 46: REPARAR, pero ya lo usó
         C: MOV(N) → (6,3), vacía
 """
 import pytest
@@ -63,10 +63,10 @@ ESCUDO
 """
 
 MINADOR = """
-MINA(S,O)
+MINA(SO)
 MOV(S)
 MOV(O)
-IF VIDA < 90 THEN REPARAR
+IF V < 90 THEN REPARAR
 MOV(E)
 MOV(N)
 """

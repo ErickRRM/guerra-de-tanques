@@ -42,7 +42,12 @@ def direccion_invalida(texto: str) -> str:
 
 def direcciones_mina(texto: str) -> str:
     return (f"MINA necesita una esquina: {texto!r} "
-            "(use MINA(N,E), MINA(N,O), MINA(S,E) o MINA(S,O))")
+            "(use MINA(NE), MINA(NO), MINA(SE) o MINA(SO))")
+
+
+def mina_con_coma(esquina: str) -> str:
+    return (f"MINA ya no lleva coma: escriba la esquina junta, "
+            f"MINA({esquina})")
 
 
 def radar_suelto() -> str:
@@ -63,13 +68,21 @@ def en_minusculas(lexemas: list[str]) -> str:
 
 
 def accion_no_permitida(texto: str) -> str:
-    return (f"acción no permitida en IF: {texto!r} "
-            "(admitidas: AMT, MISIL, ESCUDO, REPARAR)")
+    return f"acción no permitida en IF: {texto!r}"
+
+
+def if_anidado() -> str:
+    return "no se admite un IF dentro de otro IF"
 
 
 def if_invalido() -> str:
     return ("estructura IF inválida "
-            "(use: IF RADAR(dir) > 0 THEN accion  |  IF VIDA < n THEN accion)")
+            "(use: IF RADAR(dir) > 0 THEN accion  |  IF V < n THEN accion)")
+
+
+def vida_es_v() -> str:
+    return ("VIDA ya no existe: la vida se guarda en la variable V "
+            "(escriba: IF V < 50 THEN accion)")
 
 
 def caracter_invalido(c: str) -> str:

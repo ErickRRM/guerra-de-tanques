@@ -131,7 +131,7 @@ class Misil(Accion):
 
 @registrar("MINA")
 class LanzarMina(Accion):
-    """Lanza una mina a una esquina contigua: MINA(N,E) cae en (x+1, y-1).
+    """Lanza una mina a una esquina contigua: MINA(NE) cae en (x+1, y-1).
 
     Si la esquina queda fuera del tablero o ya tiene mina, no pasa nada y
     no se gasta munición. Con armado inmediato, si cae sobre un tanque

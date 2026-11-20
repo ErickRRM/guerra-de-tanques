@@ -52,21 +52,33 @@ def test_misil_en_linea_recta():
 
 
 @pytest.mark.parametrize("texto, vertical, horizontal", [
-    ("MINA(N,E)", Direccion.N, Direccion.E),
-    ("MINA(N,O)", Direccion.N, Direccion.O),
-    ("MINA(S,E)", Direccion.S, Direccion.E),
-    ("MINA(S,O)", Direccion.S, Direccion.O),
-    ("MINA(E,N)", Direccion.N, Direccion.E),     # en cualquier orden
+    ("MINA(NE)", Direccion.N, Direccion.E),
+    ("MINA(NO)", Direccion.N, Direccion.O),
+    ("MINA(SE)", Direccion.S, Direccion.E),
+    ("MINA(SO)", Direccion.S, Direccion.O),
+    ("MINA(EN)", Direccion.N, Direccion.E),      # en cualquier orden
+    ("MINA ( NE )", Direccion.N, Direccion.E),   # con espacios
 ])
 def test_mina_a_una_esquina(texto, vertical, horizontal):
     i = prog(texto)[0]
     assert (i.tipo, i.direccion, i.direccion2) ==         (Tipo.MINA, vertical, horizontal)
 
 
-@pytest.mark.parametrize("texto", ["MINA", "MINA(N)", "MINA(N,S)",
-                                   "MINA(E,O)", "MINA(N,X)", "MINA(N,E"])
+@pytest.mark.parametrize("texto", ["MINA", "MINA(N)", "MINA(NS)",
+                                   "MINA(EO)", "MINA(NX)", "MINA(NE",
+                                   "MINA()", "MINA(N E)"])
 def test_mina_mal_formada(texto):
     assert errores_de(texto)
+
+
+@pytest.mark.parametrize("texto, sugerida", [
+    ("MINA(N,E)", "MINA(NE)"), ("MINA(E,N)", "MINA(NE)"),
+    ("MINA(S,O)", "MINA(SO)"),
+])
+def test_mina_con_coma_ya_no_existe(texto, sugerida):
+    errs = errores_de(texto)
+    assert len(errs) == 1
+    assert "coma" in errs[0].mensaje and sugerida in errs[0].mensaje
 
 
 def test_misil_con_coordenadas_ya_no_existe():
@@ -90,7 +102,7 @@ def test_exige_mayusculas(texto):
 
 
 def test_tolera_espacios_de_sobra():
-    i = prog("  MINA (  N ,  E )  ")[0]
+    i = prog("  MINA (  NE )  ")[0]
     assert (i.direccion, i.direccion2) == (Direccion.N, Direccion.E)
     assert prog("MOV ( N )")[0].direccion is Direccion.N
 
@@ -120,18 +132,18 @@ def test_if_con_radar():
 
 
 def test_if_con_vida():
-    i = prog("IF VIDA < 40 THEN REPARAR")[0]
+    i = prog("IF V < 40 THEN REPARAR")[0]
     assert i.condicion.fuente is Fuente.VIDA
     assert i.condicion.direccion is None
     assert i.accion.tipo is Tipo.REPARAR
 
 
 @pytest.mark.parametrize("texto,op", [
-    ("IF VIDA > 10 THEN ESCUDO", Operador.MAYOR),
-    ("IF VIDA < 10 THEN ESCUDO", Operador.MENOR),
-    ("IF VIDA >= 10 THEN ESCUDO", Operador.MAYOR_IGUAL),
-    ("IF VIDA <= 10 THEN ESCUDO", Operador.MENOR_IGUAL),
-    ("IF VIDA == 10 THEN ESCUDO", Operador.IGUAL),
+    ("IF V > 10 THEN ESCUDO", Operador.MAYOR),
+    ("IF V < 10 THEN ESCUDO", Operador.MENOR),
+    ("IF V >= 10 THEN ESCUDO", Operador.MAYOR_IGUAL),
+    ("IF V <= 10 THEN ESCUDO", Operador.MENOR_IGUAL),
+    ("IF V == 10 THEN ESCUDO", Operador.IGUAL),
 ])
 def test_todos_los_operadores(texto, op):
     assert prog(texto)[0].condicion.operador is op
@@ -141,21 +153,23 @@ def test_el_radar_negativo_es_una_condicion_valida():
     assert prog("IF RADAR(O) < -1 THEN ESCUDO")[0].condicion.valor == -1
 
 
-@pytest.mark.parametrize("accion", ["AMT(N)", "MISIL(N)", "ESCUDO",
-                                    "REPARAR"])
-def test_acciones_admitidas_en_if(accion):
-    assert prog(f"IF VIDA > 0 THEN {accion}")[0].accion is not None
+@pytest.mark.parametrize("accion, tipo", [
+    ("MOV(N)", Tipo.MOV), ("AMT(N)", Tipo.AMT), ("MISIL(N)", Tipo.MISIL),
+    ("MINA(NE)", Tipo.MINA), ("ESCUDO", Tipo.ESCUDO),
+    ("REPARAR", Tipo.REPARAR), ("ESPERAR", Tipo.ESPERAR),
+])
+def test_if_admite_cualquier_accion(accion, tipo):
+    assert prog(f"IF V > 0 THEN {accion}")[0].accion.tipo is tipo
 
 
-@pytest.mark.parametrize("accion", ["MOV(N)", "MINA(N,E)", "ESPERAR"])
-def test_acciones_no_admitidas_en_if(accion):
-    errs = errores_de(f"IF VIDA > 0 THEN {accion}")
+def test_if_no_admite_otro_if():
+    errs = errores_de("IF V > 0 THEN IF V < 50 THEN ESCUDO")
     assert len(errs) == 1
-    assert "no permitida en IF" in errs[0].mensaje
+    assert "dentro de otro IF" in errs[0].mensaje
 
 
 def test_la_condicion_evalua_correctamente():
-    c = prog("IF VIDA < 40 THEN REPARAR")[0].condicion
+    c = prog("IF V < 40 THEN REPARAR")[0].condicion
     assert c.evalua(30) is True
     assert c.evalua(40) is False
 
@@ -188,7 +202,7 @@ def test_if_sin_operador():
 
 
 def test_if_sin_then():
-    assert "IF inválida" in errores_de("IF VIDA < 40 REPARAR")[0].mensaje
+    assert "IF inválida" in errores_de("IF V < 40 REPARAR")[0].mensaje
 
 
 def test_condicion_con_fuente_invalida():
@@ -241,9 +255,9 @@ def test_formato_de_los_errores():
 def test_representacion_legible():
     assert str(prog("MOV(N)")[0]) == "MOV(N)"
     assert str(prog("MISIL(E)")[0]) == "MISIL(E)"
-    assert str(prog("MINA(E,S)")[0]) == "MINA(S,E)"
-    assert str(prog("IF VIDA < 40 THEN REPARAR")[0]) == \
-        "IF VIDA < 40 THEN REPARAR"
+    assert str(prog("MINA(ES)")[0]) == "MINA(SE)"
+    assert str(prog("IF V < 40 THEN REPARAR")[0]) == \
+        "IF V < 40 THEN REPARAR"
 
 
 def test_el_programa_se_reinicia_al_agotarse():
@@ -264,3 +278,8 @@ def test_vectores_de_direccion():
     assert (Direccion.S.dx, Direccion.S.dy) == (0, 1)
     assert (Direccion.E.dx, Direccion.E.dy) == (1, 0)
     assert (Direccion.O.dx, Direccion.O.dy) == (-1, 0)
+
+
+def test_vida_ya_no_existe_se_escribe_v():
+    errs = errores_de("IF VIDA < 40 THEN REPARAR")
+    assert errs and "variable V" in errs[0].mensaje
