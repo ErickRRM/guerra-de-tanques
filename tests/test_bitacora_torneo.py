@@ -30,7 +30,8 @@ def test_la_bitacora_lleva_lo_necesario_para_reproducir():
     salida, _, _ = partida_con_bitacora()
     texto = salida.getvalue()
     assert "Semilla        5" in texto
-    assert "radar hibrido · turnos rotativo" in texto
+    assert "turnos rotativo · mina armada en 0 rondas" in texto
+    assert "AMT 5 · misil 10 · mina 7.5" in texto
     assert "tanques/cazador.txt" in texto
 
 

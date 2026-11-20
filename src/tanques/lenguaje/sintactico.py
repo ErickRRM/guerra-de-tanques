@@ -10,14 +10,18 @@ descenso recursivo de un solo nivel, sin tabla de análisis.
 
     instruccion  := simple | condicional
     simple       := con-direccion "(" direccion ")"
-                  | "MISIL" "(" entero "," entero ")"
+                  | "MINA" "(" esquina ")"
                   | sin-parametros
+    con-direccion:= "MOV" | "AMT" | "MISIL"
+    sin-parametros := "ESCUDO" | "REPARAR" | "ESPERAR"
     condicional  := "IF" condicion "THEN" accion
     condicion    := "RADAR" "(" direccion ")" relacional entero
-                  | "VIDA" relacional entero
-    accion       := "AMT" "(" direccion ")"
-                  | "MISIL" "(" entero "," entero ")"
-                  | "ESCUDO" | "REPARAR"
+                  | "V" relacional entero
+    accion       := simple            (cualquier instrucción salvo otro IF)
+    esquina      := "NE" | "NO" | "SE" | "SO"
+
+La esquina de MINA se escribe junta, sin coma: una letra norte-sur y una
+este-oeste (`MINA(NE)`). Se tolera el orden inverso (`MINA(EN)`).
 """
 from __future__ import annotations
 
@@ -25,15 +29,21 @@ from ..modelo.direccion import Direccion
 from . import errores as err
 from .instrucciones import (ACCIONES_EN_IF, Condicion, Fuente, Instruccion,
                             Operador, Tipo)
-from .tokens import TipoToken, Token
+from .tokens import ESQUINAS, TipoToken, Token
 
 #: Palabras que introducen una instrucción con dirección.
-_CON_DIRECCION = {"MOV": Tipo.MOV, "AMT": Tipo.AMT, "RADAR": Tipo.RADAR,
-                  "DAÑAR": Tipo.DANAR, "DANAR": Tipo.DANAR}
+_CON_DIRECCION = {"MOV": Tipo.MOV, "AMT": Tipo.AMT, "MISIL": Tipo.MISIL}
 
 #: Palabras que forman una instrucción por sí solas.
-_SIN_PARAMETROS = {"MINA": Tipo.MINA, "ESCUDO": Tipo.ESCUDO,
-                   "REPARAR": Tipo.REPARAR, "ESPERAR": Tipo.ESPERAR}
+_SIN_PARAMETROS = {"ESCUDO": Tipo.ESCUDO, "REPARAR": Tipo.REPARAR,
+                   "ESPERAR": Tipo.ESPERAR}
+
+_NORTE_SUR = (Direccion.N, Direccion.S)
+
+
+def _canonica(esquina: str) -> str:
+    """'EN' -> 'NE': primero la letra norte-sur."""
+    return esquina if esquina[0] in "NS" else esquina[::-1]
 
 
 class ErrorAnalisis(Exception):
@@ -110,11 +120,16 @@ class AnalizadorSintactico:
             return Instruccion(tipo=_CON_DIRECCION[token.lexema],
                                direccion=direccion, linea=linea)
 
-        if token.lexema == "MISIL":
+        if token.lexema == "MINA":
             self._avanza()
-            x, y = self._parentesis_coordenada()
-            return Instruccion(tipo=Tipo.MISIL, x=x, y=y, linea=linea)
+            vertical, horizontal = self._parentesis_esquina()
+            return Instruccion(tipo=Tipo.MINA, direccion=vertical,
+                               direccion2=horizontal, linea=linea)
 
+        if token.lexema == "RADAR":
+            raise ErrorAnalisis(err.radar_suelto())
+        if token.lexema in ("DAÑAR", "DANAR"):
+            raise ErrorAnalisis(err.danar_no_es_instruccion())
         raise ErrorAnalisis(err.desconocida(self._texto))
 
     def _condicional(self, linea: int) -> Instruccion:
@@ -128,7 +143,7 @@ class AnalizadorSintactico:
 
     def _condicion(self) -> Condicion:
         token = self._actual
-        if token.es(TipoToken.PALABRA, "VIDA"):
+        if token.es(TipoToken.PALABRA, "V"):
             self._avanza()
             operador = self._relacional()
             return Condicion(fuente=Fuente.VIDA, operador=operador,
@@ -141,9 +156,13 @@ class AnalizadorSintactico:
             return Condicion(fuente=Fuente.RADAR, direccion=direccion,
                              operador=operador, valor=self._entero())
 
+        if token.es(TipoToken.PALABRA, "VIDA"):
+            raise ErrorAnalisis(err.vida_es_v())
         raise ErrorAnalisis(err.if_invalido())
 
     def _accion(self, linea: int) -> Instruccion:
+        if self._actual.es(TipoToken.PALABRA, "IF"):
+            raise ErrorAnalisis(err.if_anidado())
         inicio = self._i
         instruccion = self._simple(linea)
         if instruccion.tipo not in ACCIONES_EN_IF:
@@ -162,19 +181,25 @@ class AnalizadorSintactico:
             raise ErrorAnalisis(err.desconocida(self._texto))
         return Direccion.desde_texto(token.lexema)
 
-    def _parentesis_coordenada(self) -> tuple[int, int]:
+    def _parentesis_esquina(self) -> tuple[Direccion, Direccion]:
+        """`(NE)`: devuelve (norte-sur, este-oeste)."""
         if not self._acepta(TipoToken.PAR_IZQ):
-            raise ErrorAnalisis(err.desconocida(self._texto))
-        x = self._entero()
-        if not self._acepta(TipoToken.COMA):
-            raise ErrorAnalisis(err.desconocida(self._texto))
-        y = self._entero()
+            raise ErrorAnalisis(err.direcciones_mina(self._texto))
+        token = self._avanza()
+        if (token.tipo is TipoToken.DIRECCION
+                and self._actual.tipo is TipoToken.COMA):
+            # la forma antigua MINA(N,E): se señala junto con su corrección
+            self._avanza()
+            par = token.lexema + self._actual.lexema
+            if par in ESQUINAS:
+                raise ErrorAnalisis(err.mina_con_coma(_canonica(par)))
+            raise ErrorAnalisis(err.direcciones_mina(self._texto))
+        if token.tipo is not TipoToken.ESQUINA:
+            raise ErrorAnalisis(err.direcciones_mina(self._texto))
         if not self._acepta(TipoToken.PAR_DER):
-            raise ErrorAnalisis(err.desconocida(self._texto))
-        if not (1 <= x <= self.ancho and 1 <= y <= self.alto):
-            raise ErrorAnalisis(
-                err.fuera_del_tablero(x, y, self.ancho, self.alto))
-        return x, y
+            raise ErrorAnalisis(err.direcciones_mina(self._texto))
+        a, b = (Direccion.desde_texto(c) for c in token.lexema)
+        return (a, b) if a in _NORTE_SUR else (b, a)
 
     def _relacional(self) -> Operador:
         token = self._actual

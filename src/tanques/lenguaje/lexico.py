@@ -4,11 +4,14 @@ Primera fase del intérprete. Recorre el texto de una línea carácter a
 carácter y lo descompone en componentes léxicos, descartando los espacios y
 los comentarios. No conoce la gramática: no le corresponde decidir si la
 secuencia de tokens tiene sentido, solo reconocerlos.
+
+Las palabras y las direcciones se escriben en mayúsculas: `mov(n)` es un
+error léxico, no una variante de `MOV(N)`.
 """
 from __future__ import annotations
 
-from .errores import ErrorSintaxis, caracter_invalido
-from .tokens import (DIRECCIONES, PALABRAS_RESERVADAS, RELACIONALES, TipoToken,
+from .errores import ErrorSintaxis, caracter_invalido, en_minusculas
+from .tokens import (DIRECCIONES, ESQUINAS, PALABRAS_RESERVADAS, RELACIONALES, TipoToken,
                      Token)
 
 COMENTARIO = "#"
@@ -27,6 +30,7 @@ class AnalizadorLexico:
         """Descompone una línea. Devuelve (tokens, errores)."""
         tokens: list[Token] = []
         errores: list[ErrorSintaxis] = []
+        minusculas: list[str] = []
         i, n = 0, len(texto)
 
         while i < n:
@@ -77,7 +81,9 @@ class AnalizadorLexico:
                 j = i
                 while j < n and (texto[j].isalnum() or texto[j] == "_"):
                     j += 1
-                lexema = texto[i:j].upper()
+                lexema = texto[i:j]
+                if lexema != lexema.upper():
+                    minusculas.append(lexema)
                 tokens.append(Token(self._clasifica(lexema), lexema, linea, col))
                 i = j
                 continue
@@ -86,6 +92,10 @@ class AnalizadorLexico:
                                          caracter_invalido(c), texto.strip()))
             i += 1
 
+        if minusculas:                  # un solo aviso por línea
+            errores.append(ErrorSintaxis(self.archivo, linea,
+                                         en_minusculas(minusculas),
+                                         texto.strip()))
         tokens.append(Token(TipoToken.FIN, "", linea, len(texto) + 1))
         return tokens, errores
 
@@ -100,6 +110,8 @@ class AnalizadorLexico:
         """
         if lexema in DIRECCIONES:
             return TipoToken.DIRECCION
+        if lexema in ESQUINAS:
+            return TipoToken.ESQUINA
         if lexema in PALABRAS_RESERVADAS:
             return TipoToken.PALABRA
         return TipoToken.PALABRA      # palabra no reconocida: lo dirá el parser

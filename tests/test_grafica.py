@@ -155,9 +155,10 @@ def test_cerrar_la_ventana_termina_la_partida(app):
 
 @requiere_pantalla
 def test_el_tablero_dibuja_lo_que_dice_el_estado(app):
-    config, m = motor_de(("a", "MINA\nESCUDO", (1, 1)),
-                         ("b", "ESPERAR", (3, 3)), ("c", "MISIL(3,3)",
-                                                    (8, 8)), vida_inicial=30)
+    config, m = motor_de(("a", "MINA(SE)\nESCUDO", (1, 1)),
+                         ("b", "ESPERAR", (3, 3)), ("c", "MISIL(O)",
+                                                    (8, 3)), vida_inicial=10,
+                         mina_rondas_armado=3)
     app.partida(config)
     pulsar(app, "una", "una", "salir")
     ejecutar(m, app._partida)
@@ -176,7 +177,7 @@ def test_el_panel_muestra_vida_e_instruccion(app):
     pulsar(app, "una", "salir")
     ejecutar(m, app._partida)
     tarjeta = app._partida._tarjetas["b"]
-    assert tarjeta["vida"]["text"] == "90"
+    assert tarjeta["vida"]["text"] == "95"
     assert "ESPERAR" in app._partida._tarjetas["b"]["linea"]["text"]
     assert "AMT(E)" in app._partida._tarjetas["a"]["linea"]["text"]
 

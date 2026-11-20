@@ -76,16 +76,22 @@ def comando_config(args) -> int:
     print(f"Semilla            {c.semilla}")
     print(f"Rondas máximas     {c.rondas_maximas}")
     print(f"Vida inicial       {c.vida_inicial}")
+    print(f"Daño               AMT {c.dano.ametralladora:g} · misil "
+          f"{c.dano.misil:g} · mina {c.dano.mina:g}")
+    print(f"Choques            tanque {c.dano.choque_tanque:g} a cada uno · "
+          f"pared {c.dano.choque_pared:g}")
+    print(f"Munición           misiles {c.municion.misiles} · minas "
+          f"{c.municion.minas}")
+    print(f"Escudo             absorbe {c.escudo_puntos}")
     print(f"Reparar            +{c.reparar_puntos} "
-          f"({c.municion.reparaciones} uso por partida)")
-    print(f"Refacción          +{c.refaccion.minimo} a "
-          f"+{c.refaccion.maximo} al azar")
+          f"({cfg.REPARACIONES_POR_PARTIDA} uso por partida)")
+    print(f"Tanque destruido   +{c.refaccion.minimo} a "
+          f"+{c.refaccion.maximo} al azar a quien pasa encima")
     print()
     print("Reglas ajustables (docs/DECISIONES.md)")
-    print(f"  Modo del radar   {c.modo_radar.value}")
     print(f"  Orden de turnos  {c.orden_turnos.value}")
-    print(f"  Armado de mina   {c.mina_turnos_armado} "
-          f"{c.mina_medida_armado.value}")
+    print(f"  Armado de mina   {c.mina_rondas_armado} rondas "
+          f"(0 = inmediato)")
     print(f"  Daño del choque  se acredita al {c.acredita_choque.value}")
     print()
     print("Tanques")

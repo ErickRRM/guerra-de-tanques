@@ -40,32 +40,70 @@ def test_las_cuatro_direcciones():
 
 
 def test_instrucciones_sin_parametros():
-    for palabra, tipo in [("MINA", Tipo.MINA), ("ESCUDO", Tipo.ESCUDO),
+    for palabra, tipo in [("ESCUDO", Tipo.ESCUDO),
                           ("REPARAR", Tipo.REPARAR),
                           ("ESPERAR", Tipo.ESPERAR)]:
         assert prog(palabra)[0].tipo is tipo
 
 
-def test_misil_con_coordenada():
-    i = prog("MISIL(3,5)")[0]
-    assert (i.tipo, i.x, i.y) == (Tipo.MISIL, 3, 5)
+def test_misil_en_linea_recta():
+    i = prog("MISIL(E)")[0]
+    assert (i.tipo, i.direccion) == (Tipo.MISIL, Direccion.E)
 
 
-def test_danar_acepta_las_dos_grafias():
-    assert prog("DAÑAR(N)")[0].tipo is Tipo.DANAR
-    assert prog("DANAR(N)")[0].tipo is Tipo.DANAR
+@pytest.mark.parametrize("texto, vertical, horizontal", [
+    ("MINA(NE)", Direccion.N, Direccion.E),
+    ("MINA(NO)", Direccion.N, Direccion.O),
+    ("MINA(SE)", Direccion.S, Direccion.E),
+    ("MINA(SO)", Direccion.S, Direccion.O),
+    ("MINA(EN)", Direccion.N, Direccion.E),      # en cualquier orden
+    ("MINA ( NE )", Direccion.N, Direccion.E),   # con espacios
+])
+def test_mina_a_una_esquina(texto, vertical, horizontal):
+    i = prog(texto)[0]
+    assert (i.tipo, i.direccion, i.direccion2) ==         (Tipo.MINA, vertical, horizontal)
+
+
+@pytest.mark.parametrize("texto", ["MINA", "MINA(N)", "MINA(NS)",
+                                   "MINA(EO)", "MINA(NX)", "MINA(NE",
+                                   "MINA()", "MINA(N E)"])
+def test_mina_mal_formada(texto):
+    assert errores_de(texto)
+
+
+@pytest.mark.parametrize("texto, sugerida", [
+    ("MINA(N,E)", "MINA(NE)"), ("MINA(E,N)", "MINA(NE)"),
+    ("MINA(S,O)", "MINA(SO)"),
+])
+def test_mina_con_coma_ya_no_existe(texto, sugerida):
+    errs = errores_de(texto)
+    assert len(errs) == 1
+    assert "coma" in errs[0].mensaje and sugerida in errs[0].mensaje
+
+
+def test_misil_con_coordenadas_ya_no_existe():
+    assert errores_de("MISIL(3,5)")
+
+
+@pytest.mark.parametrize("texto", ["DAÑAR(N)", "DANAR(N)"])
+def test_danar_ya_no_es_instruccion(texto):
+    assert "no es una instrucción" in errores_de(texto)[0].mensaje
+
+
+def test_radar_suelto_ya_no_es_instruccion():
+    assert "condición de un IF" in errores_de("RADAR(N)")[0].mensaje
 
 
 # ---------------------------------------------------------------- tolerancia
-def test_no_distingue_mayusculas():
-    assert prog("mov(n)")[0].direccion is Direccion.N
-    assert prog("Mov(N)")[0].tipo is Tipo.MOV
-    assert prog("if vida < 40 then reparar")[0].tipo is Tipo.IF
+@pytest.mark.parametrize("texto", ["mov(n)", "Mov(N)", "MOV(n)",
+                                   "if vida < 40 then reparar"])
+def test_exige_mayusculas(texto):
+    assert "mayúsculas" in errores_de(texto)[0].mensaje
 
 
 def test_tolera_espacios_de_sobra():
-    i = prog("  MISIL (  3 ,  5 )  ")[0]
-    assert (i.x, i.y) == (3, 5)
+    i = prog("  MINA (  NE )  ")[0]
+    assert (i.direccion, i.direccion2) == (Direccion.N, Direccion.E)
     assert prog("MOV ( N )")[0].direccion is Direccion.N
 
 
@@ -94,18 +132,18 @@ def test_if_con_radar():
 
 
 def test_if_con_vida():
-    i = prog("IF VIDA < 40 THEN REPARAR")[0]
+    i = prog("IF V < 40 THEN REPARAR")[0]
     assert i.condicion.fuente is Fuente.VIDA
     assert i.condicion.direccion is None
     assert i.accion.tipo is Tipo.REPARAR
 
 
 @pytest.mark.parametrize("texto,op", [
-    ("IF VIDA > 10 THEN ESCUDO", Operador.MAYOR),
-    ("IF VIDA < 10 THEN ESCUDO", Operador.MENOR),
-    ("IF VIDA >= 10 THEN ESCUDO", Operador.MAYOR_IGUAL),
-    ("IF VIDA <= 10 THEN ESCUDO", Operador.MENOR_IGUAL),
-    ("IF VIDA == 10 THEN ESCUDO", Operador.IGUAL),
+    ("IF V > 10 THEN ESCUDO", Operador.MAYOR),
+    ("IF V < 10 THEN ESCUDO", Operador.MENOR),
+    ("IF V >= 10 THEN ESCUDO", Operador.MAYOR_IGUAL),
+    ("IF V <= 10 THEN ESCUDO", Operador.MENOR_IGUAL),
+    ("IF V == 10 THEN ESCUDO", Operador.IGUAL),
 ])
 def test_todos_los_operadores(texto, op):
     assert prog(texto)[0].condicion.operador is op
@@ -115,22 +153,23 @@ def test_el_radar_negativo_es_una_condicion_valida():
     assert prog("IF RADAR(O) < -1 THEN ESCUDO")[0].condicion.valor == -1
 
 
-@pytest.mark.parametrize("accion", ["AMT(N)", "MISIL(2,2)", "ESCUDO",
-                                    "REPARAR"])
-def test_acciones_admitidas_en_if(accion):
-    assert prog(f"IF VIDA > 0 THEN {accion}")[0].accion is not None
+@pytest.mark.parametrize("accion, tipo", [
+    ("MOV(N)", Tipo.MOV), ("AMT(N)", Tipo.AMT), ("MISIL(N)", Tipo.MISIL),
+    ("MINA(NE)", Tipo.MINA), ("ESCUDO", Tipo.ESCUDO),
+    ("REPARAR", Tipo.REPARAR), ("ESPERAR", Tipo.ESPERAR),
+])
+def test_if_admite_cualquier_accion(accion, tipo):
+    assert prog(f"IF V > 0 THEN {accion}")[0].accion.tipo is tipo
 
 
-@pytest.mark.parametrize("accion", ["MOV(N)", "MINA", "RADAR(N)", "ESPERAR",
-                                    "DAÑAR(N)"])
-def test_acciones_no_admitidas_en_if(accion):
-    errs = errores_de(f"IF VIDA > 0 THEN {accion}")
+def test_if_no_admite_otro_if():
+    errs = errores_de("IF V > 0 THEN IF V < 50 THEN ESCUDO")
     assert len(errs) == 1
-    assert "no permitida en IF" in errs[0].mensaje
+    assert "dentro de otro IF" in errs[0].mensaje
 
 
 def test_la_condicion_evalua_correctamente():
-    c = prog("IF VIDA < 40 THEN REPARAR")[0].condicion
+    c = prog("IF V < 40 THEN REPARAR")[0].condicion
     assert c.evalua(30) is True
     assert c.evalua(40) is False
 
@@ -146,7 +185,7 @@ def test_instruccion_desconocida():
 
 
 def test_misil_mal_formado():
-    assert "desconocida o mal formada" in errores_de("MISIL(3)")[0].mensaje
+    assert errores_de("MISIL(3)")
 
 
 def test_falta_el_parentesis():
@@ -158,22 +197,12 @@ def test_sobra_texto_al_final_de_la_linea():
     assert "desconocida o mal formada" in errores_de("MOV(N) ESPERAR")[0].mensaje
 
 
-def test_misil_fuera_del_tablero():
-    assert "fuera del tablero" in errores_de("MISIL(99,99)")[0].mensaje
-    assert prog("MISIL(99,99)", ancho=100, alto=100)[0].x == 99
-
-
-def test_misil_respeta_el_tamano_configurado():
-    assert errores_de("MISIL(9,1)", ancho=8, alto=8)
-    assert prog("MISIL(9,1)", ancho=12, alto=12)
-
-
 def test_if_sin_operador():
     assert "IF inválida" in errores_de("IF RADAR(S) 0 THEN AMT(S)")[0].mensaje
 
 
 def test_if_sin_then():
-    assert "IF inválida" in errores_de("IF VIDA < 40 REPARAR")[0].mensaje
+    assert "IF inválida" in errores_de("IF V < 40 REPARAR")[0].mensaje
 
 
 def test_condicion_con_fuente_invalida():
@@ -201,7 +230,9 @@ def test_archivo_inexistente():
 
 
 # ---------------------------------------------------------------- archivos
-@pytest.mark.parametrize("nombre", ["cazador", "defensivo", "explorador"])
+@pytest.mark.parametrize("nombre", ["cazador", "defensivo", "explorador",
+                                    "artillero", "embestidor", "minador",
+                                    "patrulla"])
 def test_los_programas_de_ejemplo_son_validos(nombre):
     p, errs = I.cargar(RAIZ / "tanques" / f"{nombre}.txt")
     assert errs == [], formato_errores(errs)
@@ -210,7 +241,7 @@ def test_los_programas_de_ejemplo_son_validos(nombre):
 
 def test_el_archivo_con_errores_los_reporta_todos():
     _, errs = I.cargar(RAIZ / "tanques" / "con_errores.txt")
-    assert [e.linea for e in errs] == [3, 4, 5, 6, 7, 8]
+    assert [e.linea for e in errs] == [3, 4, 5, 6, 7, 8, 9, 10, 11]
 
 
 def test_formato_de_los_errores():
@@ -223,9 +254,10 @@ def test_formato_de_los_errores():
 # ---------------------------------------------------------------- utilidades
 def test_representacion_legible():
     assert str(prog("MOV(N)")[0]) == "MOV(N)"
-    assert str(prog("MISIL(3,5)")[0]) == "MISIL(3,5)"
-    assert str(prog("IF VIDA < 40 THEN REPARAR")[0]) == \
-        "IF VIDA < 40 THEN REPARAR"
+    assert str(prog("MISIL(E)")[0]) == "MISIL(E)"
+    assert str(prog("MINA(ES)")[0]) == "MINA(SE)"
+    assert str(prog("IF V < 40 THEN REPARAR")[0]) == \
+        "IF V < 40 THEN REPARAR"
 
 
 def test_el_programa_se_reinicia_al_agotarse():
@@ -246,3 +278,8 @@ def test_vectores_de_direccion():
     assert (Direccion.S.dx, Direccion.S.dy) == (0, 1)
     assert (Direccion.E.dx, Direccion.E.dy) == (1, 0)
     assert (Direccion.O.dx, Direccion.O.dy) == (-1, 0)
+
+
+def test_vida_ya_no_existe_se_escribe_v():
+    errs = errores_de("IF VIDA < 40 THEN REPARAR")
+    assert errs and "variable V" in errs[0].mensaje

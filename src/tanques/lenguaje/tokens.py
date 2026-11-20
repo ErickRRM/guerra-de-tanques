@@ -14,6 +14,7 @@ class TipoToken(Enum):
 
     PALABRA = "palabra reservada"
     DIRECCION = "dirección"
+    ESQUINA = "esquina"
     ENTERO = "entero"
     RELACIONAL = "operador relacional"
     PAR_IZQ = "paréntesis de apertura"
@@ -22,11 +23,12 @@ class TipoToken(Enum):
     FIN = "fin de línea"
 
 
-#: Palabras reservadas del lenguaje. DANAR se admite como variante de DAÑAR
-#: para que un teclado sin eñe no invalide el archivo.
+#: Palabras reservadas del lenguaje. RADAR solo aparece en la condición de
+#: un IF; DAÑAR ya no es instrucción: el daño es consecuencia de las demás.
+#: V es la variable que guarda la vida del tanque (antes se escribía VIDA).
 PALABRAS_RESERVADAS = frozenset({
-    "MOV", "AMT", "RADAR", "DAÑAR", "DANAR", "MISIL", "MINA", "ESCUDO",
-    "REPARAR", "ESPERAR", "IF", "THEN", "VIDA",
+    "MOV", "AMT", "RADAR", "MISIL", "MINA", "ESCUDO",
+    "REPARAR", "ESPERAR", "IF", "THEN", "V",
 })
 
 #: Operadores relacionales admitidos en la condición de un IF.
@@ -34,6 +36,10 @@ RELACIONALES = frozenset({">", "<", ">=", "<=", "=="})
 
 #: Los cuatro puntos cardinales.
 DIRECCIONES = frozenset({"N", "S", "E", "O"})
+
+#: Las cuatro esquinas que acepta MINA, escritas sin coma: MINA(NE). Se
+#: admite también el orden inverso (EN = NE) por tolerancia de escritura.
+ESQUINAS = frozenset({"NE", "NO", "SE", "SO", "EN", "ON", "ES", "OS"})
 
 
 @dataclass(frozen=True)

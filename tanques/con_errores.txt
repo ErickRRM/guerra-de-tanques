@@ -1,8 +1,11 @@
 # Archivo con errores deliberados, para probar el validador
-RADAR(S)
+MOV(N)
 MOV(X)
 IF RADAR(S) 0 THEN AMT(S)
-IF RADAR(S) > 0 THEN MOV(N)
-MISIL(3)
+IF RADAR(S) > 0 THEN IF V < 50 THEN ESCUDO
+MISIL(3,4)
 DISPARAR
-MISIL(99,99)
+mov(n)
+RADAR(S)
+DAÑAR(N)
+MINA(NS)

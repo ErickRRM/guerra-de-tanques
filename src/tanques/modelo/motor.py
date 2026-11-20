@@ -21,7 +21,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Optional, Sequence
 
-from ..config import AcreditaChoque, Configuracion, MedidaArmado, OrdenTurnos
+from ..config import (REPARACIONES_POR_PARTIDA, AcreditaChoque,
+                      Configuracion, OrdenTurnos)
 from .acciones import ACCIONES
 from .direccion import Direccion
 from .entidades import Refaccion, Registro, Tanque
@@ -29,7 +30,8 @@ from .eventos import Evento, TipoEvento
 from .tablero import Posicion, Tablero
 
 #: Colores de reserva para tanques sin color en la configuración.
-_PALETA = ("#2E5E8C", "#D97706", "#0F766E", "#6D4C9F")
+_PALETA = ("#2E5E8C", "#D97706", "#0F766E", "#6D4C9F", "#BE185D",
+           "#4D7C0F")
 
 
 # ------------------------------------------------------------ resultado
@@ -44,7 +46,7 @@ class Resultado:
     ganador: Optional[str]
     motivo: Motivo
     rondas: int
-    dano_infligido: dict[str, int]
+    dano_infligido: dict[str, float]
 
 
 # ------------------------------------------------------- estado público
@@ -54,13 +56,13 @@ class EstadoTanque:
     numero: int
     color: str
     posicion: Posicion
-    vida: int
+    vida: float
     vivo: bool
-    escudo: bool
+    escudo: float               # puntos de escudo que le quedan
     minas: int
     misiles: int
     reparaciones: int
-    dano_infligido: int
+    dano_infligido: float
     linea: int
     direccion: Direccion
 
@@ -131,7 +133,7 @@ class Motor:
                 posicion=tuple(pos), vida=c.vida_inicial,
                 vida_maxima=c.vida_inicial, minas=c.municion.minas,
                 misiles=c.municion.misiles,
-                reparaciones=c.municion.reparaciones,
+                reparaciones=REPARACIONES_POR_PARTIDA,
                 color=colores.get(programa.nombre,
                                   _PALETA[i % len(_PALETA)]),
                 numero=i + 1)
@@ -219,9 +221,9 @@ class Motor:
                     f"Ronda {self.ronda_actual}: "
                     + ", ".join(t.nombre for t in vivos),
                     orden=[t.nombre for t in vivos])
+        self._armar_minas()
 
     def _turno(self, tanque: Tanque):
-        tanque.escudo = False                   # «hasta su siguiente turno»
         tanque.llego = False
         instruccion = tanque.programa.en(tanque.contador)
         tanque.contador += 1
@@ -234,41 +236,22 @@ class Motor:
         self.ejecutar_instruccion(tanque, instruccion)
         tanque.turnos += 1
 
-        self._avanzar_minas_del_turno(tanque)
         self._revisar_minas(tanque)
         self._retirar_destruidos()
-        if not self._pendientes:
-            self._cerrar_ronda()
 
     def ejecutar_instruccion(self, tanque: Tanque, instruccion):
         ACCIONES[instruccion.tipo.name].ejecutar(self, tanque, instruccion)
 
-    def _cerrar_ronda(self):
-        """Armado por rondas, y minas cuyo dueño ya no juega turnos."""
-        for mina in self.registro.minas:
-            if mina.armada or mina.ronda_colocada == self.ronda_actual:
-                continue
-            por_rondas = (self.config.mina_medida_armado
-                          is MedidaArmado.RONDAS)
-            if por_rondas or not mina.dueno.vivo:
-                self._descontar(mina)
-
     # ------------------------------------------------------- minas
-    def _avanzar_minas_del_turno(self, tanque: Tanque):
-        if self.config.mina_medida_armado is not MedidaArmado.TURNOS_PROPIETARIO:
-            return
+    def _armar_minas(self):
+        """Al empezar la ronda se arman las minas a las que les toca."""
         for mina in self.registro.minas:
-            if (mina.dueno is tanque and not mina.armada
-                    and mina.turno_colocada < tanque.turnos - 1):
-                self._descontar(mina)
-
-    def _descontar(self, mina):
-        mina.faltan -= 1
-        if mina.armada:
-            self.emitir(TipoEvento.MINA_ARMADA,
-                        f"La mina de {mina.dueno.nombre} en "
-                        f"{mina.posicion} está armada", mina.dueno,
-                        posicion=mina.posicion)
+            if not mina.armada and mina.ronda_armado <= self.ronda_actual:
+                mina.armada = True
+                self.emitir(TipoEvento.MINA_ARMADA,
+                            f"La mina de {mina.dueno.nombre} en "
+                            f"{mina.posicion} está armada", mina.dueno,
+                            posicion=mina.posicion)
 
     def _revisar_minas(self, tanque: Tanque):
         """Una mina armada estalla cuando un tanque entra a su casilla."""
@@ -277,27 +260,44 @@ class Motor:
         mina = self.registro.mina_en(tanque.posicion)
         if mina is None or not mina.armada:
             return
+        self._detonar(mina, tanque, "pisa")
+
+    def detonar_si_ocupada(self, mina):
+        """Una mina armada que cae sobre un tanque estalla en ese momento."""
+        tanque = self.registro.tanque_en(mina.posicion)
+        if tanque is not None and mina.armada:
+            self._detonar(mina, tanque, "recibe")
+
+    def _detonar(self, mina, tanque: Tanque, verbo: str):
         self.registro.minas.remove(mina)
         self.emitir(TipoEvento.MINA_EXPLOTA,
-                    f"{tanque.nombre} pisa la mina de {mina.dueno.nombre} "
-                    f"en {mina.posicion}", tanque, posicion=mina.posicion,
-                    dueno=mina.dueno.nombre)
+                    f"{tanque.nombre} {verbo} la mina de "
+                    f"{mina.dueno.nombre} en {mina.posicion}", tanque,
+                    posicion=mina.posicion, dueno=mina.dueno.nombre)
         self.aplicar_dano(tanque, self.config.dano.mina, autor=mina.dueno,
                           origen="mina")
 
     # ------------------------------------------------------- daño
-    def aplicar_dano(self, objetivo: Tanque, puntos: int,
+    def aplicar_dano(self, objetivo: Tanque, puntos: float,
                      autor: Optional[Tanque], origen: str,
-                     bloqueable: bool = True, acreditar: bool = True) -> int:
-        """Resta vida y acredita el daño. Devuelve los puntos aplicados.
+                     acreditar: bool = True) -> float:
+        """Resta el daño, primero del escudo y luego de la vida.
 
-        El daño a uno mismo nunca se acredita: se cuenta aparte como
-        autoinfligido, igual que el choque contra la pared.
+        Devuelve los puntos que llegaron a la vida. Solo esos se acreditan:
+        lo que absorbe el escudo no cuenta para el desempate. El daño a uno
+        mismo nunca se acredita: se cuenta aparte como autoinfligido, igual
+        que el choque contra la pared.
         """
-        if bloqueable and objetivo.escudo:
+        absorbido = min(objetivo.escudo, puntos)
+        if absorbido > 0:
+            objetivo.escudo -= absorbido
             self.emitir(TipoEvento.BLOQUEO,
-                        f"El escudo de {objetivo.nombre} absorbe {puntos} "
-                        f"puntos ({origen})", objetivo, origen=origen)
+                        f"El escudo de {objetivo.nombre} absorbe "
+                        f"{absorbido:g} puntos ({origen}); le quedan "
+                        f"{objetivo.escudo:g}", objetivo, origen=origen,
+                        puntos=absorbido, escudo=objetivo.escudo)
+        puntos -= absorbido
+        if puntos <= 0:
             return 0
         objetivo.vida -= puntos
         objetivo.dano_recibido += puntos
@@ -306,14 +306,14 @@ class Motor:
         elif acreditar:
             autor.dano_infligido += puntos
         self.emitir(TipoEvento.DANO,
-                    f"{objetivo.nombre} recibe {puntos} puntos ({origen}); "
-                    f"vida {max(objetivo.vida, 0)}", objetivo,
+                    f"{objetivo.nombre} recibe {puntos:g} puntos ({origen}); "
+                    f"vida {max(objetivo.vida, 0):g}", objetivo,
                     puntos=puntos, origen=origen,
                     autor=autor.nombre if autor else None)
         return puntos
 
     def chocar(self, embestidor: Tanque, embestido: Tanque):
-        """Choque entre tanques: 15 a cada uno, nadie cambia de casilla."""
+        """Choque entre tanques: daño a los dos, nadie cambia de casilla."""
         puntos = self.config.dano.choque_tanque
         modo = self.config.acredita_choque
         self.emitir(TipoEvento.DISPARO,
@@ -358,8 +358,9 @@ class Motor:
         antes = tanque.vida
         tanque.vida = min(tanque.vida_maxima, tanque.vida + cura)
         self.emitir(TipoEvento.REFACCION,
-                    f"{tanque.nombre} recoge una refacción "
-                    f"+{tanque.vida - antes} (vida {tanque.vida})", tanque,
+                    f"{tanque.nombre} pasa sobre un tanque destruido y "
+                    f"se repara +{tanque.vida - antes:g} "
+                    f"(vida {tanque.vida:g})", tanque,
                     puntos=tanque.vida - antes, posicion=tanque.posicion)
 
     # ------------------------------------------------------- destrucción
@@ -369,7 +370,7 @@ class Motor:
             if t.vivo and t.vida <= 0:
                 t.vivo = False
                 t.vida = 0
-                t.escudo = False
+                t.escudo = 0
                 self._muertos_ultimo_turno.append(t)
                 # Una sola refacción por casilla aunque ya hubiera otra.
                 if self.registro.refaccion_en(t.posicion) is None:

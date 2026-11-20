@@ -19,22 +19,26 @@ def test_reconoce_palabra_parentesis_y_direccion():
                                TipoToken.DIRECCION, TipoToken.PAR_DER]
 
 
-def test_reconoce_la_coma_y_los_enteros():
-    assert tipos("MISIL(3,5)") == [
-        TipoToken.PALABRA, TipoToken.PAR_IZQ, TipoToken.ENTERO,
-        TipoToken.COMA, TipoToken.ENTERO, TipoToken.PAR_DER]
+def test_reconoce_la_esquina():
+    assert tipos("MINA(NE)") == [
+        TipoToken.PALABRA, TipoToken.PAR_IZQ, TipoToken.ESQUINA,
+        TipoToken.PAR_DER]
+
+
+def test_reconoce_los_enteros():
+    assert tipos("V < 40")[2] is TipoToken.ENTERO
 
 
 @pytest.mark.parametrize("op", [">", "<", ">=", "<=", "=="])
 def test_reconoce_los_operadores_relacionales(op):
-    t = tokenizar(f"VIDA {op} 10")
+    t = tokenizar(f"V {op} 10")
     assert t[1].tipo is TipoToken.RELACIONAL
     assert t[1].lexema == op
 
 
 def test_los_operadores_de_dos_caracteres_no_se_parten():
-    assert lexemas("VIDA >= 10") == ["VIDA", ">=", "10"]
-    assert lexemas("VIDA == 10") == ["VIDA", "==", "10"]
+    assert lexemas("V >= 10") == ["V", ">=", "10"]
+    assert lexemas("V == 10") == ["V", "==", "10"]
 
 
 def test_reconoce_enteros_negativos():
@@ -54,13 +58,23 @@ def test_una_palabra_desconocida_se_clasifica_como_palabra():
 
 
 # ---------------------------------------------------------------- normalización
-def test_normaliza_a_mayusculas():
-    assert lexemas("mov(n)") == ["MOV", "(", "N", ")"]
+@pytest.mark.parametrize("texto", ["mov(N)", "MOV(n)", "Mov(N)",
+                                   "MINA(Ne)"])
+def test_las_minusculas_son_un_error(texto):
+    _, errores = AnalizadorLexico().analizar(texto, 1)
+    assert len(errores) == 1
+    assert "mayúsculas" in errores[0].mensaje
+
+
+def test_un_solo_error_por_linea_aunque_haya_varias_minusculas():
+    _, errores = AnalizadorLexico().analizar("if vida < 40 then reparar", 1)
+    assert len(errores) == 1
+    assert "'REPARAR'" in errores[0].mensaje
 
 
 def test_descarta_los_espacios():
-    assert lexemas("  MISIL (  3 ,  5 )  ") == \
-        ["MISIL", "(", "3", ",", "5", ")"]
+    assert lexemas("  MINA (  N ,  E )  ") == \
+        ["MINA", "(", "N", ",", "E", ")"]
 
 
 def test_descarta_el_comentario():

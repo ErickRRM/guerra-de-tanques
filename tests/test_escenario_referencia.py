@@ -6,45 +6,48 @@ correr el motor, y quedó en la tabla `ESPERADO`. Si el motor deja de
 coincidir, algo cambió en las reglas: o es un error, o es una decisión
 nueva que hay que registrar en docs/DECISIONES.md y reflejar aquí.
 
+Se rehízo con las correcciones del profesor: AMT 5, misil 10 en línea
+recta, mina 7.5 lanzada a una esquina y activa de inmediato, choques de 12
+a los dos tanques, escudo de 20 que dura hasta agotarse y sin RADAR suelto.
+
 El escenario no usa azar: las posiciones están fijas, el orden es rotativo
-y nadie recoge refacciones. Por eso no depende de la semilla.
+y nadie pasa sobre un tanque destruido. Por eso no depende de la semilla.
 
 Orden de los turnos (rotativo)
     R1 A B C   R2 B C A   R3 C A B   R4 A B C   R5 B C A
     R6 C A B   R7 A B C   R8 B C A   R9 C A B   R10 A B C
 
-Desarrollo a mano
-    R1  A: IF RADAR(E) explora → B a 4; AMT(E) a B (90)
-        B: MINA en (6,2)
-        C: IF RADAR(N) explora → B a 4; AMT(N) a B (80)
-    R2  B: MOV(S) → (6,3); a la mina le falta 1 turno
-        C: DAÑAR(O), no hay nadie en (5,6)
+Desarrollo a mano  (vida, y entre corchetes el escudo)
+    R1  A: IF RADAR(E) → B a 4; AMT(E) a B (95)
+        B: MINA(SO) desde (6,2) cae en (5,3), armada; no hay nadie
+        C: IF RADAR(N) → B a 4; AMT(N) a B (90)
+    R2  B: MOV(S) → (6,3)
+        C: MOV(N) → (6,5)
         A: MOV(S) → (2,3)
-    R3  C: ESCUDO
-        A: MISIL(6,6) contra C; el escudo lo absorbe (misiles 2)
-        B: MOV(S) → (6,4); la mina queda armada
-    R4  A: ESCUDO
-        B: IF VIDA < 80 con vida 80: falso
-        C: pierde el escudo al empezar su turno; MOV(O) → (5,6)
-    R5  B: MOV(N) → (6,3)
-        C: IF RADAR(N) desde (5,6) → pared a 6: falso
-        A: pierde el escudo; IF RADAR(E) → B a 4; AMT(E) a B (70)
-    R6  C: DAÑAR(O), no hay nadie en (4,6)
+    R3  C: ESCUDO [20]
+        A: MISIL(E) pasa sobre la mina de (5,3) y da a B en (6,3) (80)
+        B: MOV(O) → (5,3): pisa su propia mina, 7.5 autoinfligidos (72.5)
+    R4  A: ESCUDO [20]
+        B: IF V < 90 con 72.5: REPARAR (92.5); ya no le quedan usos
+        C: MOV(N) → (6,4)
+    R5  B: MOV(E) → (6,3)
+        C: IF RADAR(N) → B a 1; AMT(N) a B (87.5)
+        A: IF RADAR(E) → B a 4; AMT(E) a B (82.5)
+    R6  C: MOV(N) contra B: choque, B 70.5; C recibe 12 en el escudo [8]
         A: MOV(S) → (2,4)
-        B: MOV(N) → (6,2): pisa su propia mina armada (45),
-           daño autoinfligido, no se acredita a nadie
-    R7  A: MISIL(6,6), la casilla ya está vacía (misiles 1)
-        B: MINA en (6,2), la segunda
-        C: ESCUDO
+        B: MOV(N) → (6,2)
+    R7  A: MISIL(E) a C en (6,4): el escudo absorbe 8 [0], 2 a la vida (98)
+        B: MINA(SO) a (5,3) otra vez, armada; no hay nadie
+        C: ESCUDO, se recarga [20]
     R8  B: MOV(S) → (6,3)
-        C: pierde el escudo; MOV(O) → (4,6)
-        A: ESCUDO
-    R9  C: IF RADAR(N) desde (4,6) → pared a 6: falso
-        A: pierde el escudo; IF RADAR(E) desde (2,4) → pared a 7: falso
-        B: MOV(S) → (6,4); la segunda mina queda armada
+        C: MOV(N) contra B: choque, B 58.5; C [8]
+        A: ESCUDO con el escudo completo: no hace nada
+    R9  C: IF RADAR(N) → B a 1; AMT(N) a B (53.5)
+        A: IF RADAR(E) → C a 4; AMT(E), el escudo absorbe los 5 [3]
+        B: MOV(O) → (5,3): pisa su segunda mina (46)
     R10 A: MOV(S) → (2,5)
-        B: IF VIDA < 80 con 45: REPARAR (65)
-        C: DAÑAR(O), no hay nadie en (3,6)
+        B: IF V < 90 con 46: REPARAR, pero ya lo usó
+        C: MOV(N) → (6,3), vacía
 """
 import pytest
 
@@ -55,48 +58,48 @@ from tanques.modelo import Motor, TipoEvento
 ARTILLERO = """
 IF RADAR(E) > 0 THEN AMT(E)
 MOV(S)
-MISIL(6,6)
+MISIL(E)
 ESCUDO
 """
 
 MINADOR = """
-MINA
+MINA(SO)
 MOV(S)
-MOV(S)
-IF VIDA < 80 THEN REPARAR
-MOV(N)
+MOV(O)
+IF V < 90 THEN REPARAR
+MOV(E)
 MOV(N)
 """
 
 MURO = """
 IF RADAR(N) > 0 THEN AMT(N)
-DAÑAR(O)
+MOV(N)
 ESCUDO
-MOV(O)
+MOV(N)
 """
 
 # ronda: {tanque: (posición, vida, escudo)}, minas [(posición, armada)]
 ESPERADO = {
-    1: ({"A": ((2, 2), 100, False), "B": ((6, 2), 80, False),
-         "C": ((6, 6), 100, False)}, [((6, 2), False)]),
-    2: ({"A": ((2, 3), 100, False), "B": ((6, 3), 80, False),
-         "C": ((6, 6), 100, False)}, [((6, 2), False)]),
-    3: ({"A": ((2, 3), 100, False), "B": ((6, 4), 80, False),
-         "C": ((6, 6), 100, True)}, [((6, 2), True)]),
-    4: ({"A": ((2, 3), 100, True), "B": ((6, 4), 80, False),
-         "C": ((5, 6), 100, False)}, [((6, 2), True)]),
-    5: ({"A": ((2, 3), 100, False), "B": ((6, 3), 70, False),
-         "C": ((5, 6), 100, False)}, [((6, 2), True)]),
-    6: ({"A": ((2, 4), 100, False), "B": ((6, 2), 45, False),
-         "C": ((5, 6), 100, False)}, []),
-    7: ({"A": ((2, 4), 100, False), "B": ((6, 2), 45, False),
-         "C": ((5, 6), 100, True)}, [((6, 2), False)]),
-    8: ({"A": ((2, 4), 100, True), "B": ((6, 3), 45, False),
-         "C": ((4, 6), 100, False)}, [((6, 2), False)]),
-    9: ({"A": ((2, 4), 100, False), "B": ((6, 4), 45, False),
-         "C": ((4, 6), 100, False)}, [((6, 2), True)]),
-    10: ({"A": ((2, 5), 100, False), "B": ((6, 4), 65, False),
-          "C": ((4, 6), 100, False)}, [((6, 2), True)]),
+    1: ({"A": ((2, 2), 100, 0), "B": ((6, 2), 90, 0),
+         "C": ((6, 6), 100, 0)}, [((5, 3), True)]),
+    2: ({"A": ((2, 3), 100, 0), "B": ((6, 3), 90, 0),
+         "C": ((6, 5), 100, 0)}, [((5, 3), True)]),
+    3: ({"A": ((2, 3), 100, 0), "B": ((5, 3), 72.5, 0),
+         "C": ((6, 5), 100, 20)}, []),
+    4: ({"A": ((2, 3), 100, 20), "B": ((5, 3), 92.5, 0),
+         "C": ((6, 4), 100, 20)}, []),
+    5: ({"A": ((2, 3), 100, 20), "B": ((6, 3), 82.5, 0),
+         "C": ((6, 4), 100, 20)}, []),
+    6: ({"A": ((2, 4), 100, 20), "B": ((6, 2), 70.5, 0),
+         "C": ((6, 4), 100, 8)}, []),
+    7: ({"A": ((2, 4), 100, 20), "B": ((6, 2), 70.5, 0),
+         "C": ((6, 4), 98, 20)}, [((5, 3), True)]),
+    8: ({"A": ((2, 4), 100, 20), "B": ((6, 3), 58.5, 0),
+         "C": ((6, 4), 98, 8)}, [((5, 3), True)]),
+    9: ({"A": ((2, 4), 100, 20), "B": ((5, 3), 46, 0),
+         "C": ((6, 4), 98, 3)}, []),
+    10: ({"A": ((2, 5), 100, 20), "B": ((5, 3), 46, 0),
+          "C": ((6, 3), 98, 3)}, []),
 }
 
 
@@ -130,18 +133,23 @@ def test_contadores_al_final_de_la_ronda_diez():
         m.ronda()
     a, b, c = m.registro.tanques
     assert (a.dano_infligido, b.dano_infligido, c.dano_infligido) \
-        == (20, 0, 10)
+        == (22, 0, 39)
     assert (a.misiles, a.minas) == (1, 3)
-    assert (b.minas, b.reparaciones, b.dano_autoinfligido) == (1, 0, 25)
-    assert (c.misiles, c.dano_recibido) == (3, 0)
+    assert (b.minas, b.reparaciones, b.dano_autoinfligido) == (1, 0, 15)
+    assert (b.dano_recibido, c.misiles, c.dano_recibido) == (74, 3, 2)
 
 
 @pytest.mark.parametrize("ronda, tipo, tanque", [
-    (3, TipoEvento.BLOQUEO, "C"),          # el escudo absorbe el misil
-    (3, TipoEvento.MINA_ARMADA, "B"),
-    (4, TipoEvento.CONDICION_FALSA, "B"),  # 80 < 80 es falso
-    (6, TipoEvento.MINA_EXPLOTA, "B"),     # su propia mina
-    (10, TipoEvento.REPARACION, "B"),
+    (3, TipoEvento.MINA_EXPLOTA, "B"),     # su propia mina
+    (4, TipoEvento.REPARACION, "B"),
+    (5, TipoEvento.RADAR, "C"),            # el IF explora en el momento
+    (6, TipoEvento.BLOQUEO, "C"),          # el escudo absorbe el choque
+    (7, TipoEvento.BLOQUEO, "C"),          # y parte del misil
+    (7, TipoEvento.DANO, "C"),             # el resto llega a la vida
+    (7, TipoEvento.MINA_COLOCADA, "B"),
+    (8, TipoEvento.SIN_EFECTO, "A"),       # escudo ya completo
+    (9, TipoEvento.MINA_EXPLOTA, "B"),
+    (10, TipoEvento.SIN_EFECTO, "B"),      # REPARAR ya usado
 ])
 def test_eventos_clave(ronda, tipo, tanque):
     m = escenario()

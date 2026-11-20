@@ -20,13 +20,13 @@ from pathlib import Path
 from tkinter import colorchooser, filedialog, font as tkfont, messagebox
 from typing import Optional
 
-from ..config import Configuracion, Tablero, TanqueConfig
+from ..config import (MAX_TANQUES, RANGOS, Configuracion, Dano, Municion,
+                      Tablero, TanqueConfig)
 from ..modelo import Direccion, Motivo, TipoEvento
 from . import sprites
 from .animaciones import AZUL, ROJO, VERDE, Animador
 from .base import Vista
 
-MAX_TANQUES = 4
 TABLERO_PX = 520                 # lado máximo del tablero en pantalla
 MARGEN_PANTALLA = 90             # barra de tareas y marco de la ventana
 FONDO_VENTANA = "#FFFFFF"
@@ -255,9 +255,18 @@ class PantallaConfiguracion:
         self.semilla = tk.StringVar(app.root, str(config.semilla))
         self.rondas = tk.StringVar(app.root, str(config.rondas_maximas))
 
-        def campo(columna, etiqueta, *variables):
+        self.amt = tk.StringVar(app.root, str(config.dano.ametralladora))
+        self.misiles = tk.StringVar(app.root, str(config.municion.misiles))
+        self.minas = tk.StringVar(app.root, str(config.municion.minas))
+        self.reparar = tk.StringVar(app.root, str(config.reparar_puntos))
+        self.escudo = tk.StringVar(app.root, str(config.escudo_puntos))
+        self.armado = tk.StringVar(app.root,
+                                   str(config.mina_rondas_armado))
+
+        def campo(columna, etiqueta, *variables, fila_grid=0):
             caja = tk.Frame(params, bg=FONDO_VENTANA)
-            caja.grid(row=0, column=columna, sticky="w", padx=(0, 28))
+            caja.grid(row=fila_grid, column=columna, sticky="w",
+                      padx=(0, 28), pady=(0, 8))
             tk.Label(caja, text=etiqueta, font=app.f_texto, fg=GRIS,
                      bg=FONDO_VENTANA).pack(anchor="w")
             fila = tk.Frame(caja, bg=FONDO_VENTANA)
@@ -273,6 +282,23 @@ class PantallaConfiguracion:
         campo(0, "Tablero", self.ancho, self.alto)
         campo(1, "Semilla", self.semilla)
         campo(2, "Rondas máx.", self.rondas)
+
+        def rango(clave):
+            return "{}–{}".format(*RANGOS[clave])
+
+        campo(0, f"Daño AMT ({rango('ametralladora')})", self.amt,
+              fila_grid=1)
+        campo(1, f"Misiles ({rango('misiles')})", self.misiles, fila_grid=1)
+        campo(2, f"Minas ({rango('minas')})", self.minas, fila_grid=1)
+        campo(3, f"Reparar ({rango('reparar')})", self.reparar, fila_grid=1)
+        campo(4, f"Escudo ({rango('escudo')})", self.escudo, fila_grid=1)
+        campo(5, f"Armado mina, rondas ({rango('rondas_armado')})",
+              self.armado, fila_grid=1)
+        tk.Label(cuerpo, text="el misil hace el doble de la ametralladora "
+                 "y la mina 1.5 veces; los choques quitan "
+                 f"{config.dano.choque_tanque} a cada tanque",
+                 font=(app.f_texto[0], 10, "italic"), fg=GRIS,
+                 bg=FONDO_VENTANA).pack(anchor="w")
 
         botones = tk.Frame(cuerpo, bg=FONDO_VENTANA)
         botones.pack(fill="x", pady=(28, 0))
@@ -329,6 +355,12 @@ class PantallaConfiguracion:
         alto = entero(self.alto, "Alto del tablero")
         semilla = entero(self.semilla, "Semilla")
         rondas = entero(self.rondas, "Rondas máximas")
+        amt = entero(self.amt, "Daño de la ametralladora")
+        misiles = entero(self.misiles, "Misiles")
+        minas = entero(self.minas, "Minas")
+        reparar = entero(self.reparar, "Reparar")
+        escudo = entero(self.escudo, "Escudo")
+        armado = entero(self.armado, "Armado de la mina")
 
         tanques, nombres = [], set()
         for var, color in zip(self.rutas, self.colores):
@@ -343,8 +375,14 @@ class PantallaConfiguracion:
         if problemas:
             return None, problemas
 
-        nueva = replace(self.config, tablero=Tablero(ancho, alto),
+        c = self.config
+        nueva = replace(c, tablero=Tablero(ancho, alto),
                         semilla=semilla, rondas_maximas=rondas,
+                        dano=Dano(amt, c.dano.choque_tanque,
+                                  c.dano.choque_pared),
+                        municion=Municion(minas, misiles),
+                        reparar_puntos=reparar, escudo_puntos=escudo,
+                        mina_rondas_armado=armado,
                         tanques=tuple(tanques))
         return nueva, nueva.validar()
 
@@ -564,21 +602,22 @@ class VentanaPartida(Vista):
             if t.vivo and fraccion > 0:
                 barra.create_rectangle(0, 0, largo * min(1, fraccion), 16,
                                        fill=t.color, width=0)
-            tarjeta["vida"].configure(text=str(t.vida),
+            tarjeta["vida"].configure(text=f"{t.vida:g}",
                                       fg="#222222" if t.vivo else GRIS)
             instruccion = self._instrucciones.get(t.nombre)
             tarjeta["linea"].configure(
                 text=(f"L{t.linea}  ·  {instruccion}" if instruccion
                       else ""))
             if t.vivo:
-                escudo = "   escudo activo" if t.escudo else ""
+                escudo = f"    escudo {t.escudo:g}" if t.escudo else ""
                 tarjeta["datos"].configure(
                     text=f"minas {t.minas}    misiles {t.misiles}    "
                          f"reparar {t.reparaciones}    daño infligido "
-                         f"{t.dano_infligido}{escudo}")
+                         f"{t.dano_infligido:g}{escudo}")
             else:
                 tarjeta["datos"].configure(
-                    text=f"destruido    daño infligido {t.dano_infligido}")
+                    text=f"destruido    daño infligido "
+                         f"{t.dano_infligido:g}")
 
     def _anotar(self, eventos):
         r = self.registro
@@ -763,30 +802,34 @@ class VentanaPartida(Vista):
             pared = self._borde(casillas[quien], Direccion[d["direccion"]])
             return a.rafaga(aqui, pared, impacto=True)
         if e.tipo is T.DISPARO and d.get("arma") == "misil":
-            destino = self._centro(d["destino"])
+            if "objetivo" in d:
+                destino = self._centro(casillas[d["objetivo"]])
+            else:
+                destino = self._borde(casillas[quien],
+                                      Direccion[d["direccion"]])
             return (a.misil(aqui, destino)
                     and a.explosion(destino, grande="objetivo" in d))
         if e.tipo is T.DISPARO and d.get("arma") == "choque":
             return a.embestida(tag, aqui,
                                self._centro(casillas[d["objetivo"]]))
         if e.tipo is T.DANO:
-            return a.texto(aqui, f"−{d['puntos']}", ROJO)
+            return a.texto(aqui, f"−{d['puntos']:g}", ROJO)
         if e.tipo is T.BLOQUEO:
             return (a.anillo(aqui, AZUL, 0.42, 0.62, ms=260)
-                    and a.texto(aqui, "bloqueado", AZUL))
+                    and a.texto(aqui, f"−{d['puntos']:g} escudo", AZUL))
         if e.tipo is T.ESCUDO:
             return a.anillo(aqui, AZUL, 0.15, 0.49, ms=380, guiones=(6, 4))
         if e.tipo in (T.REPARACION, T.REFACCION):
             if e.tipo is T.REFACCION:
                 self.canvas.delete(_tag(d["posicion"]))
             return (a.anillo(aqui, VERDE, 0.2, 0.5, ms=300)
-                    and a.texto(aqui, f"+{d['puntos']}", VERDE))
+                    and a.texto(aqui, f"+{d['puntos']:g}", VERDE))
         if e.tipo is T.RADAR:
             return a.radar(aqui, Direccion[d["direccion"]], d["lectura"])
         if e.tipo is T.MINA_COLOCADA:
-            x, y = self._centro(d["posicion"])
-            esquina = (x + self.celda * 0.3, y + self.celda * 0.3)
-            return a.mina_nueva((x, y), esquina, escala=0.45)
+            # La mina sale del tanque y cae en la esquina contigua.
+            destino = self._centro(d["posicion"])
+            return a.mina_nueva(aqui, destino, escala=1.0)
         if e.tipo is T.MINA_ARMADA:
             return a.anillo(self._centro(d["posicion"]), ROJO, 0.1, 0.4,
                             ms=300)
@@ -844,33 +887,38 @@ AYUDA = [
     ("", "Un archivo de texto con una instrucción por línea. Las líneas "
          "vacías se ignoran y # marca un comentario. Al terminar el "
          "archivo, el programa vuelve a la primera línea."),
-    ("m", "MOV(d)       avanza una casilla; pared: 5 de daño; tanque: choque"),
-    ("m", "AMT(d)       10 al primer tanque en esa dirección"),
-    ("m", "MISIL(x,y)   30 al tanque de esa casilla; tres por partida"),
-    ("m", "MINA         se arma dos turnos después; 25 de daño; tres"),
-    ("m", "DAÑAR(d)     embiste al tanque contiguo: 15 a cada uno"),
-    ("m", "ESCUDO       inmune hasta su siguiente turno (salvo la pared)"),
-    ("m", "RADAR(d)     distancia: positiva a un tanque, negativa a la pared"),
+    ("m", "MOV(d)       avanza una casilla; pared o tanque: choque de 12"),
+    ("m", "AMT(d)       5 al primer tanque en esa dirección (configurable)"),
+    ("m", "MISIL(d)     como AMT pero el doble de daño; tres por partida"),
+    ("m", "MINA(NE)     lanza una mina a la esquina; 1.5 veces la AMT; tres"),
+    ("m", "ESCUDO       vida extra: absorbe 20 puntos hasta agotarse"),
     ("m", "REPARAR      +20 de vida; una vez por partida"),
     ("m", "ESPERAR      no hace nada"),
     ("m", "IF RADAR(d) > 0 THEN AMT(d)"),
-    ("m", "IF VIDA < 40 THEN REPARAR"),
-    ("", "Dentro de un IF solo se admiten AMT, MISIL, ESCUDO y REPARAR. "
-         "Las direcciones son N, S, E y O; las coordenadas empiezan en 1 "
-         "con la fila 1 al norte."),
+    ("m", "IF V < 40 THEN REPARAR"),
+    ("", "Todo se escribe en mayúsculas, también las direcciones. RADAR(d) "
+         "solo existe dentro de un IF: explora en ese momento y da la "
+         "distancia, positiva a un tanque y negativa a la pared. V es la "
+         "variable con la vida del tanque. Después del THEN va cualquier "
+         "instrucción (MOV, AMT, MISIL, MINA, ESCUDO, REPARAR o ESPERAR), "
+         "pero no otro IF. Las esquinas "
+         "de MINA van sin coma: (NE), (NO), (SE) y (SO). Las direcciones son N, "
+         "S, E y O; las coordenadas empiezan en 1 con la fila 1 al norte."),
+    ("", "El daño no es una instrucción: lo causan las armas, las minas y "
+         "los choques. En un choque entre tanques los dos reciben el daño."),
     ("h", "El tablero"),
     ("", "Cada tanque lleva su número y su color; el cañón apunta a la "
          "última dirección que usó. Un círculo punteado azul es el escudo. "
          "La mina roja de trazo continuo está armada; la de trazo punteado "
-         "aún no. La caja verde es una refacción: la deja un tanque "
-         "destruido y cura de 15 a 25 puntos a quien la pisa."),
+         "aún no. La caja verde es un tanque destruido: quien pasa por "
+         "encima se repara de 15 a 35 puntos al azar."),
     ("h", "Animaciones"),
     ("", "Cada turno se anima: un recuadro amarillo marca al tanque que "
          "juega; la ametralladora dispara una ráfaga; el misil sube en arco "
-         "hacia la mira roja y estalla; la mina sale del tanque y se "
-         "asienta; el radar lanza un haz verde que termina en un pulso rojo "
+         "hasta el primer tanque o la pared y estalla; la mina sale "
+         "volando a la esquina; el IF con radar lanza un haz verde que termina en un pulso rojo "
          "si encontró un tanque o gris si llegó a la pared. El daño sube en "
-         "rojo (−10), la curación en verde (+20) y lo que el escudo absorbe "
+         "rojo (−5), la curación en verde (+20) y lo que el escudo absorbe "
          "en azul. Una ✗ gris es un IF cuya condición fue falsa."),
     ("", "Una mina bajo un tanque se ve pequeña en la esquina de su "
          "casilla. En las velocidades 9 y 10 no se anima: avance rápido."),
