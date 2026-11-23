@@ -112,19 +112,43 @@ def guion(v, *pasos):
 
 
 @requiere_pantalla
-def test_el_menu_pausa_y_continuar_reanuda(app):
+def test_el_menu_no_pausa_la_partida(app):
     config, m = motor_de(("a", "ESPERAR", (1, 1)), ("b", "ESPERAR", (3, 3)))
     v = app.partida(config)
     v.senal("iniciar")
     v._abrir_menu()
-    assert v._menu is not None and v.modo == "pausa"
-    assert v.canvas.find_withtag("velo")
-    v._si_activo("una")                     # las teclas esperan
-    assert v.accion is None and v.modo == "pausa"
-    v.opciones_menu["play"].invoke()        # Continuar
-    assert v._menu is None and v.modo == "auto"
+    assert v._menu is not None and v.modo == "auto"
     assert not v.canvas.find_withtag("velo")
+    assert "en curso" in app._subtitulo_menu["text"]
+    v.opciones_menu["pausa"].invoke()       # Pausar desde el menú
+    assert v.modo == "pausa" and v._menu is not None
+    assert "en pausa" in app._subtitulo_menu["text"] or         "sin empezar" in app._subtitulo_menu["text"]
+    assert v.opciones_menu["pausa"].texto == "Reanudar"
+    v.opciones_menu["pausa"].invoke()       # y reanudar
+    assert v.modo == "auto"
+    v.opciones_menu["play"].invoke()        # Volver a la partida
+    assert v._menu is None and v.modo == "auto"
     v.senal("salir")
+
+
+@requiere_pantalla
+def test_la_partida_avanza_con_el_menu_abierto(app):
+    config, m = motor_de(("a", "MOV(E)", (1, 1)), ("b", "ESPERAR", (4, 4)))
+    v = app.partida(config)
+    v._abrir_menu()
+    rondas = []
+    original = v.ronda
+
+    def ronda(estado, eventos):
+        rondas.append(estado.ronda)
+        if len(rondas) >= 3:
+            v.senal("salir")
+            return False
+        return original(estado, eventos)
+    v.ronda = ronda
+    app.root.after(1, lambda: v.senal("iniciar"))
+    ejecutar(m, v)
+    assert rondas[:3] == [1, 2, 3]          # siguió sin cerrar el menú
 
 
 @requiere_pantalla

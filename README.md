@@ -84,6 +84,26 @@ semilla sale idéntica. Los cuatro van en una fila bajo el tablero; lo demás
 en el menú ☰ de arriba a la derecha. Cada partida se guarda en
 `bitacoras/`.
 
+**Programar un tanque dentro del juego.** El botón **Programar** de cada
+tanque (y **Editar** en el visor de un programa) abre el editor del juego,
+sin pasar por el Bloc de notas:
+
+- Se escribe una instrucción por línea y se revisa mientras se escribe: el
+  margen marca ✓ (bien escrita) o ✗ (con error); las líneas con error se
+  pintan de rojo, el motivo aparece debajo (un clic lleva a la línea) y en
+  un globo al pasar el ratón, y un aviso dice si todo el programa está bien.
+- A la derecha están las **instrucciones disponibles**; un clic inserta una.
+- **Aleatorio** escribe un programa válido al azar que luego se puede
+  modificar como cualquier otro.
+- **Guardar** (Ctrl+S) lo guarda en `tanques/` con el nombre elegido y se lo
+  asigna al tanque. Si quedan líneas con errores, avisa antes de guardar.
+
+Todas las ventanas emergentes tienen el diseño del juego, sin cuadros de
+Windows: las confirmaciones (las que borran, reemplazan o pierden cambios
+van en rojo), los avisos de error, el selector de color (paleta, tanque de
+muestra y código #RRGGBB) y el selector de programas, que recorre carpetas,
+dice si cada programa es válido y lo muestra con colores antes de elegirlo.
+
 En el formulario, cada programa se revisa en cuanto se elige: el aviso de
 la fila dice cuántas instrucciones tiene o cuántos errores, y un clic en el
 aviso rojo los muestra. Abajo hay dos paneles:
@@ -166,12 +186,14 @@ Windows suenan con `winmm`; en macOS y Linux con `afplay`, `paplay` o
 `aplay` si están instalados. Con la variable de entorno
 `TANQUES_SIN_SONIDO=1` el juego queda en silencio.
 
-**Menú de la partida.** El botón ☰ de arriba a la derecha (o Esc) pausa
-la partida y despliega el menú:
+**Menú de la partida.** El botón ☰ de arriba a la derecha (o Esc)
+despliega el menú **sin pausar la partida**: sigue jugándose detrás y el
+menú muestra la ronda al momento.
 
 | Opción | Qué hace |
 |---|---|
-| Continuar | cierra el menú; si la partida iba sola, sigue sola |
+| Volver a la partida | cierra el menú |
+| Pausar / Reanudar | detiene la partida o la deja seguir sola |
 | Reiniciar la partida | la misma partida desde el principio |
 | Volver a los tanques | regresa a la configuración |
 | Terminar la partida aquí | la termina tal como está: gana el tanque en pie con más daño infligido (si coinciden, empate), se muestra la clasificación y la bitácora lo registra |

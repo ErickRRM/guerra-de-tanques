@@ -22,20 +22,19 @@ from __future__ import annotations
 
 import ctypes
 import math
-import os
 import random
 import re
-import subprocess
 import sys
 import tkinter as tk
 from dataclasses import replace
 from pathlib import Path
-from tkinter import colorchooser, filedialog, font as tkfont, messagebox
+from tkinter import font as tkfont
 from typing import Callable, Optional
 
 from ..config import (MAX_TANQUES, RANGOS, TABLERO_MINIMO, Configuracion,
                       Dano, Municion, Tablero, TanqueConfig, lado_minimo)
-from ..lenguaje import Interprete, formato_errores
+from ..lenguaje import (CATALOGO, NOTAS, Interprete, formato_errores,
+                        generar_programa)
 from ..modelo import Direccion, Motivo, TipoEvento
 from . import sprites
 from .animaciones import AZUL, ROJO, VERDE, Animador
@@ -225,6 +224,12 @@ def icono(canvas, nombre, cx, cy, s, color, tags=()):
             canvas.create_oval(cx + k * dx - k * 0.17, cy + k * dy - k * 0.17,
                                cx + k * dx + k * 0.17, cy + k * dy + k * 0.17,
                                **o)
+    elif nombre == "lapiz":
+        canvas.create_polygon(cx + k * 0.55, cy - k * 0.85, cx + k * 0.85,
+                              cy - k * 0.55, cx - k * 0.45, cy + k * 0.75,
+                              cx - k * 0.75, cy + k * 0.45, **o)
+        canvas.create_polygon(cx - k * 0.75, cy + k * 0.45, cx - k * 0.45,
+                              cy + k * 0.75, cx - k * 0.9, cy + k * 0.9, **o)
     elif nombre == "dado":
         rect_redondeado(canvas, cx - k * 0.8, cy - k * 0.8, cx + k * 0.8,
                         cy + k * 0.8, k * 0.3, outline=color, fill="",
@@ -381,6 +386,8 @@ class Boton(tk.Canvas):
                        "#141E2B", GRIS_CLARO),
         "fantasma": (None, "#16263A", "#36506F", TINTA,
                      None, GRIS_CLARO),
+        "peligro": ("#C2353B", "#DC4A4F", "#E05A5F", "#FFFFFF",
+                    "#3A1E22", "#7D4E52"),
     }
 
     def __init__(self, padre, app: "AppGrafica", texto: str,
@@ -515,6 +522,8 @@ class Boton(tk.Canvas):
                 color = ACENTO_OSCURO if self._presionado else ACENTO_CLARO
             elif self.estilo == "fantasma":
                 contorno = ACENTO
+            elif self.estilo == "peligro":
+                contorno = "#FCA5A5"
             else:
                 contorno = sprites.mezclar(CIAN, BORDE, 0.45)
         else:
@@ -1085,6 +1094,63 @@ _LEYENDA = (("Movimiento", "#7DD3FC"), ("Armas", "#FCA5A5"),
             ("Radar y vida", "#FDE68A"), ("Dirección", _COLOR_DIRECCION))
 
 
+_FICHA = re.compile(r"[A-Za-zÁÉÍÓÚÑáéíóúñ_]+|-?\d+|\s+|.")
+
+
+def _etiqueta_de(parte: str) -> Optional[str]:
+    """La etiqueta de color de una palabra del programa, si lleva."""
+    if parte.isspace():
+        return None
+    if parte in _COLOR_PALABRA:
+        return f"p_{parte}"
+    if parte in ("N", "S", "E", "O") or parte in _ESQUINAS:
+        return "direccion"
+    if re.fullmatch(r"-?\d+", parte):
+        return "entero"
+    if parte in "(),<>=":
+        return "signo"
+    return None
+
+
+def etiquetas_de_codigo(texto: tk.Text, app: "AppGrafica"):
+    """Los colores del código, compartidos por el visor y el editor."""
+    mono = app.f_mono[0]
+    texto.tag_configure("comentario", foreground=GRIS_CLARO,
+                        font=(mono, 10, "italic"))
+    for palabra, tono in _COLOR_PALABRA.items():
+        texto.tag_configure(f"p_{palabra}", foreground=tono,
+                            font=(mono, 10, "bold"))
+    texto.tag_configure("direccion", foreground=_COLOR_DIRECCION)
+    texto.tag_configure("entero", foreground=_COLOR_NUMERO)
+    texto.tag_configure("signo", foreground=GRIS)
+
+
+def cabeza_programa(app: "AppGrafica", c: tk.Canvas, numero: int,
+                    color: str, rotulo: str, titulo: str, pildoras):
+    """Encabezado del visor y del editor: el tanque, el archivo y un
+    resumen en píldoras [(texto, color)] de derecha a izquierda."""
+    px = app.px
+    w = max(c.winfo_width(), px(600))
+    h = int(c["height"])
+    c.delete("all")
+    degradado(c, w, h, "#132235", FONDO_BARRA, horizontal=True, pasos=32)
+    c.create_line(0, h - 2, w, h - 2, fill=color, width=2)
+    sprites.tanque(c, px(42), h / 2, px(52), numero, color, Direccion.E,
+                   etiqueta="visor")
+    c.create_text(px(80), h / 2 - px(12), text=espaciado(rotulo),
+                  anchor="w", font=app.f_mini, fill=claro(color, 0.3))
+    c.create_text(px(80), h / 2 + px(10), text=titulo, anchor="w",
+                  font=app.f_barra, fill=TINTA)
+    x = w - px(18)
+    for texto, tono in pildoras:
+        ancho = app.fuente_boton.measure(texto) + px(24)
+        rect_redondeado(c, x - ancho, h / 2 - px(13), x, h / 2 + px(13),
+                        px(13), fill=PANEL_ALTO, outline=tono)
+        c.create_text(x - ancho / 2, h / 2, text=texto, fill=tono,
+                      font=app.f_boton)
+        x -= ancho + px(8)
+
+
 def leer_programa(ruta: Path) -> Optional[str]:
     """El texto del archivo, con la misma tolerancia que el intérprete."""
     try:
@@ -1105,9 +1171,12 @@ class VisorPrograma:
 
     def __init__(self, app: "AppGrafica", ruta: Path, numero: int,
                  color: str, config: Configuracion,
-                 al_cerrar: Optional[Callable[[], None]] = None):
+                 al_cerrar: Optional[Callable[[], None]] = None,
+                 al_guardar: Optional[Callable[[Path], None]] = None):
         self.app, self.ruta, self.numero = app, Path(ruta), numero
         self.color, self.config, self.al_cerrar = color, config, al_cerrar
+        self.al_guardar = al_guardar
+        self.editor: Optional[EditorPrograma] = None
         self.globo = Globo(app)
         self._errores: dict[int, list] = {}
         px = app.px
@@ -1166,11 +1235,11 @@ class VisorPrograma:
         app.boton(pie, "Cerrar", self.cerrar, primario=True,
                   ancho=100).pack(side="right")
         app.boton(pie, "Revisar", self.recargar, icono="reiniciar",
-                  ayuda="Volver a leer el archivo después de corregirlo"
+                  ayuda="Volver a leer el archivo"
                   ).pack(side="right", padx=px(8))
-        app.boton(pie, "Editar", self._abrir, icono="carpeta",
-                  ayuda="Abrir el archivo en el editor de texto para "
-                        "corregirlo").pack(side="right")
+        app.boton(pie, "Editar", self.editar, icono="lapiz",
+                  ayuda="Corregir el programa aquí mismo, con la revisión "
+                        "al momento").pack(side="right")
         self.recargar()
         v.transient(app.root)
         v.focus_set()
@@ -1182,8 +1251,7 @@ class VisorPrograma:
         t.tag_configure("numero", foreground=GRIS_CLARO)
         t.tag_configure("numero_error", foreground=ROJO_UI,
                         font=(mono, 10, "bold"))
-        t.tag_configure("comentario", foreground=GRIS_CLARO,
-                        font=(mono, 10, "italic"))
+        etiquetas_de_codigo(t, app)
         t.tag_configure("explica", foreground=GRIS,
                         font=(app.f_texto[0], 9))
         t.tag_configure("explica_error", foreground=ROJO_UI,
@@ -1192,12 +1260,6 @@ class VisorPrograma:
         t.tag_configure("codigo_error", foreground="#FFB4B4",
                         underline=True)
         t.tag_configure("encima", background=PANEL_HOVER)
-        for palabra, tono in _COLOR_PALABRA.items():
-            t.tag_configure(f"p_{palabra}", foreground=tono,
-                            font=(mono, 10, "bold"))
-        t.tag_configure("direccion", foreground=_COLOR_DIRECCION)
-        t.tag_configure("entero", foreground=_COLOR_NUMERO)
-        t.tag_configure("signo", foreground=GRIS)
         t.tag_raise("encima")
 
     def recargar(self):
@@ -1264,21 +1326,9 @@ class VisorPrograma:
         t = self.texto
         extra = ("codigo_error",) if con_error else ()
         codigo, _, comentario = cruda.partition("#")
-        for parte in re.findall(r"[A-Za-zÁÉÍÓÚÑáéíóúñ_]+|-?\d+|\s+|.",
-                                codigo):
-            if parte.isspace():
-                etiqueta = ()
-            elif parte in _COLOR_PALABRA:
-                etiqueta = (f"p_{parte}",)
-            elif parte in ("N", "S", "E", "O") or parte in _ESQUINAS:
-                etiqueta = ("direccion",)
-            elif re.fullmatch(r"-?\d+", parte):
-                etiqueta = ("entero",)
-            elif parte in "(),<>=":
-                etiqueta = ("signo",)
-            else:
-                etiqueta = ()
-            t.insert("end", parte, etiqueta + extra)
+        for parte in _FICHA.findall(codigo):
+            etiqueta = _etiqueta_de(parte)
+            t.insert("end", parte, ((etiqueta,) if etiqueta else ()) + extra)
         if comentario or cruda.lstrip().startswith("#"):
             t.insert("end", "#" + comentario, "comentario")
 
@@ -1310,51 +1360,1056 @@ class VisorPrograma:
 
     # ------------------------------------------------------------ cabeza
     def _dibujar_cabeza(self):
-        c, px = self.cabeza, self.app.px
-        w = max(c.winfo_width(), px(600))
-        h = int(c["height"])
-        c.delete("all")
-        degradado(c, w, h, "#132235", FONDO_BARRA, horizontal=True,
-                  pasos=32)
-        c.create_line(0, h - 2, w, h - 2, fill=self.color, width=2)
-        sprites.tanque(c, px(42), h / 2, px(52), self.numero, self.color,
-                       Direccion.E, etiqueta="visor")
-        c.create_text(px(80), h / 2 - px(12),
-                      text=espaciado(f"TANQUE {self.numero}"),
-                      anchor="w", font=self.app.f_mini,
-                      fill=claro(self.color, 0.3))
-        c.create_text(px(80), h / 2 + px(10), text=self.ruta.name,
-                      anchor="w", font=self.app.f_barra, fill=TINTA)
-        x = w - px(18)
         validas = getattr(self, "validas", 0)
         con_error = getattr(self, "con_error", 0)
-        for texto, tono in ((f"{con_error} con error", ROJO_UI if con_error
-                             else GRIS_CLARO),
-                            (f"{validas} válidas", VERDE_OK if validas
-                             else GRIS_CLARO)):
-            ancho = self.app.fuente_boton.measure(texto) + px(24)
-            rect_redondeado(c, x - ancho, h / 2 - px(13), x, h / 2 + px(13),
-                            px(13), fill=PANEL_ALTO, outline=tono)
-            c.create_text(x - ancho / 2, h / 2, text=texto, fill=tono,
-                          font=self.app.f_boton)
-            x -= ancho + px(8)
+        cabeza_programa(
+            self.app, self.cabeza, self.numero, self.color,
+            f"TANQUE {self.numero}", self.ruta.name,
+            ((f"{con_error} con error", ROJO_UI if con_error else GRIS_CLARO),
+             (f"{validas} válidas", VERDE_OK if validas else GRIS_CLARO)))
 
     # ------------------------------------------------------------ acciones
-    def _abrir(self):
-        """Abre el archivo en el editor del sistema para corregirlo."""
+    def editar(self) -> "EditorPrograma":
+        """Abre el editor del juego con este programa; al guardar, el visor
+        se pone al día."""
+        if self.editor is not None and self.editor.ventana.winfo_exists():
+            self.editor.ventana.lift()
+            return self.editor
+        self.globo.ocultar()
+        self.editor = EditorPrograma(
+            self.app, self.ruta, self.numero, self.color, self.config,
+            al_guardar=self._guardado)
+        return self.editor
+
+    def _guardado(self, ruta: Path):
+        self.ruta = Path(ruta)
         try:
-            if sys.platform == "win32":
-                os.startfile(self.ruta)                    # noqa: S606
-            elif sys.platform == "darwin":
-                subprocess.Popen(["open", str(self.ruta)])
-            else:
-                subprocess.Popen(["xdg-open", str(self.ruta)])
-        except OSError as e:
-            messagebox.showerror("No se pudo abrir el archivo", str(e),
-                                 parent=self.ventana)
+            self.ventana.title(f"Programa del tanque {self.numero} · "
+                               f"{self.ruta.name}")
+            self.recargar()
+        except tk.TclError:
+            pass
+        if self.al_guardar:
+            self.al_guardar(self.ruta)
 
     def cerrar(self):
         self.globo.ocultar()
+        try:
+            self.ventana.destroy()
+        except tk.TclError:
+            pass
+        if self.al_cerrar:
+            self.al_cerrar()
+
+
+# ======================================================================
+# ------------------------------------------------------- ventanas emergentes
+def lista_desplazable(padre, fondo: str = PANEL):
+    """Un marco dentro de un lienzo que se recorre con la rueda del ratón
+    (la barra de desplazamiento de Windows no admite colores).
+
+    Devuelve (lienzo, marco, enlazar): `enlazar()` activa la rueda sobre
+    todo lo que se haya puesto en el marco; se llama al terminar de llenarlo.
+    """
+    lienzo = tk.Canvas(padre, bg=fondo, highlightthickness=0, bd=0)
+    marco = tk.Frame(lienzo, bg=fondo)
+    dentro = lienzo.create_window(0, 0, window=marco, anchor="nw")
+    marco.bind("<Configure>", lambda _e: lienzo.configure(
+        scrollregion=lienzo.bbox("all")))
+    lienzo.bind("<Configure>", lambda e: lienzo.itemconfigure(
+        dentro, width=e.width))
+
+    def rueda(e):
+        caja = lienzo.bbox("all")
+        if caja and caja[3] > lienzo.winfo_height():
+            lienzo.yview_scroll(-1 if e.delta > 0 else 1, "units")
+
+    def enlazar():
+        pendientes = [lienzo]
+        while pendientes:
+            w = pendientes.pop()
+            w.bind("<MouseWheel>", rueda, add="+")
+            pendientes.extend(w.winfo_children())
+    return lienzo, marco, enlazar
+
+
+def _centrar(ventana: tk.Toplevel, padre):
+    """Pone la ventana en el centro de la que la abrió."""
+    ventana.update_idletasks()
+    w, h = ventana.winfo_reqwidth(), ventana.winfo_reqheight()
+    try:
+        x = padre.winfo_rootx() + (padre.winfo_width() - w) // 2
+        y = padre.winfo_rooty() + (padre.winfo_height() - h) // 3
+    except tk.TclError:
+        x = y = 100
+    if padre.winfo_width() <= 1:              # el padre aún no se muestra
+        x = (ventana.winfo_screenwidth() - w) // 2
+        y = (ventana.winfo_screenheight() - h) // 3
+    ventana.geometry(f"+{max(0, x)}+{max(0, y)}")
+
+
+class VentanaEmergente:
+    """Base de las ventanas emergentes con el diseño del juego.
+
+    Es modal: `mostrar()` bloquea las demás ventanas, espera la respuesta y
+    la devuelve. Tiene la franja de color arriba, el encabezado oscuro con
+    su ícono y un pie con los botones a la derecha.
+    """
+
+    def __init__(self, app: "AppGrafica", padre, titulo: str,
+                 color: str = ACENTO, simbolo: str = "?",
+                 subtitulo: str = ""):
+        self.app, self.color = app, color
+        self.padre = padre or app.root
+        self.valor = None
+        px = app.px
+        v = tk.Toplevel(self.padre, bg=PANEL)
+        v.withdraw()
+        v.title(titulo)
+        v.resizable(False, False)
+        v.protocol("WM_DELETE_WINDOW", self.cancelar)
+        v.bind("<Escape>", lambda _e: self.cancelar())
+        self.ventana = v
+        tk.Frame(v, bg=color, height=px(4)).pack(fill="x")
+        cabeza = tk.Frame(v, bg=FONDO_BARRA)
+        cabeza.pack(fill="x")
+        dibujo = tk.Canvas(cabeza, width=px(46), height=px(46),
+                           bg=FONDO_BARRA, highlightthickness=0)
+        dibujo.pack(side="left", padx=(px(18), px(12)), pady=px(12))
+        dibujo.create_oval(px(3), px(3), px(43), px(43), width=2,
+                           outline=color,
+                           fill=sprites.mezclar(color, FONDO_BARRA, 0.8))
+        dibujo.create_text(px(23), px(23), text=simbolo, fill=color,
+                           font=(app.f_vida[0], 17))
+        textos = tk.Frame(cabeza, bg=FONDO_BARRA)
+        textos.pack(side="left", fill="x", expand=True, padx=(0, px(22)))
+        tk.Label(textos, text=titulo, font=app.f_grande, fg=TINTA,
+                 bg=FONDO_BARRA, anchor="w").pack(fill="x")
+        if subtitulo:
+            tk.Label(textos, text=subtitulo, font=app.f_chico, fg=GRIS,
+                     bg=FONDO_BARRA, anchor="w").pack(fill="x")
+        tk.Frame(v, bg=BORDE, height=1).pack(fill="x")
+        self.pie = tk.Frame(v, bg=PANEL)
+        self.pie.pack(side="bottom", fill="x", padx=px(18),
+                      pady=(px(6), px(16)))
+        self.cuerpo = tk.Frame(v, bg=PANEL)
+        self.cuerpo.pack(fill="both", expand=True, padx=px(22),
+                         pady=(px(16), px(10)))
+
+    def boton(self, texto, accion: Callable, estilo="secundario",
+              icono=None, ancho=110) -> Boton:
+        """Un botón del pie; se agregan de derecha a izquierda."""
+        b = self.app.boton(self.pie, texto, accion, estilo=estilo,
+                           icono=icono, ancho=ancho)
+        b.pack(side="right", padx=(self.app.px(8), 0))
+        return b
+
+    def responder(self, valor):
+        self.valor = valor
+        try:
+            self.ventana.grab_release()
+            self.ventana.destroy()
+        except tk.TclError:
+            pass
+
+    def cancelar(self):
+        self.responder(None)
+
+    def mostrar(self):
+        v = self.ventana
+        v.transient(self.padre)
+        _centrar(v, self.padre)
+        v.deiconify()
+        v.lift()
+        try:
+            v.grab_set()
+        except tk.TclError:
+            pass
+        v.focus_set()
+        self.padre.wait_window(v)
+        return self.valor
+
+
+class Dialogo(VentanaEmergente):
+    """Pregunta, aviso o error: un texto, un detalle opcional en un cuadro
+    y los botones. `botones` va de izquierda a derecha como
+    [(texto, valor, estilo)]; Enter elige el último y Esc cancela."""
+
+    TIPOS = {"pregunta": (ACENTO, "?"), "peligro": (ROJO_UI, "!"),
+             "error": (ROJO_UI, "✕"), "aviso": (ACENTO, "!"),
+             "info": (CIAN, "i"), "listo": (VERDE_OK, "✓")}
+
+    def __init__(self, app, padre, titulo: str, texto: str,
+                 tipo: str = "pregunta", botones=(("Aceptar", True,
+                                                    "primario"),),
+                 detalle: str = "", cancelar=None):
+        color, simbolo = self.TIPOS[tipo]
+        super().__init__(app, padre, titulo, color, simbolo)
+        px = app.px
+        self._cancelar = cancelar
+        tk.Label(self.cuerpo, text=texto, font=app.f_texto, fg=TINTA,
+                 bg=PANEL, anchor="w", justify="left",
+                 wraplength=px(430)).pack(fill="x")
+        if detalle:
+            caja = tk.Frame(self.cuerpo, bg=PANEL_ALTO,
+                            highlightthickness=1, highlightbackground=BORDE)
+            caja.pack(fill="both", expand=True, pady=(px(12), 0))
+            tk.Frame(caja, bg=color, width=px(3)).pack(side="left",
+                                                       fill="y")
+            lineas = detalle.splitlines() or [""]
+            cuadro = tk.Text(caja, font=app.f_mono, bg=PANEL_ALTO, fg=TINTA,
+                             relief="flat", highlightthickness=0,
+                             wrap="word", width=58, padx=px(10),
+                             pady=px(8), height=min(14, sum(
+                                 1 + len(l) // 56 for l in lineas)),
+                             cursor="arrow")
+            cuadro.insert("1.0", detalle)
+            cuadro.configure(state="disabled")
+            cuadro.pack(side="left", fill="both", expand=True)
+            self.detalle = cuadro
+        for texto_b, valor, estilo in reversed(list(botones)):
+            self.boton(texto_b, lambda v=valor: self.responder(v), estilo)
+        ultimo = list(botones)[-1][1]
+        self.ventana.bind("<Return>", lambda _e: self.responder(ultimo))
+
+    def cancelar(self):
+        self.responder(self._cancelar)
+
+
+#: Colores para elegir en el selector: los seis del escuadrón primero.
+PALETA_TANQUES = sprites.COLORES_TANQUE + (
+    "#1D4ED8", "#EA580C", "#059669", "#7C3AED", "#DB2777", "#65A30D",
+    "#0891B2", "#CA8A04", "#DC2626", "#9333EA", "#475569", "#92400E",
+    "#38BDF8", "#FACC15", "#F87171", "#A3E635", "#CBD5E1", "#1F2937")
+
+
+class SelectorColor(VentanaEmergente):
+    """Elige el color de un tanque: una paleta, el tanque de muestra y un
+    campo para escribir el color en hexadecimal (#RRGGBB)."""
+
+    def __init__(self, app, padre, numero: int, color: str):
+        super().__init__(app, padre, f"Color del tanque {numero}",
+                         color, "●", "Elige uno de la paleta o escribe "
+                                     "su código")
+        px = app.px
+        self.numero, self.actual = numero, color.upper()
+        self.muestra = tk.Canvas(self.cuerpo, width=px(130),
+                                 height=px(130), bg=PANEL_ALTO,
+                                 highlightthickness=0)
+        self.muestra.grid(row=0, column=0, rowspan=2, sticky="n",
+                          padx=(0, px(18)))
+        rejilla = tk.Frame(self.cuerpo, bg=PANEL)
+        rejilla.grid(row=0, column=1, sticky="nw")
+        self.celdas: dict[str, tk.Canvas] = {}
+        lado = px(34)
+        for k, tono in enumerate(PALETA_TANQUES):
+            c = tk.Canvas(rejilla, width=lado, height=lado, bg=PANEL,
+                          highlightthickness=0, cursor="hand2")
+            c.grid(row=k // 6, column=k % 6, padx=px(3), pady=px(3))
+            c.bind("<Button-1>", lambda _e, t=tono: self.elegir(t))
+            c.bind("<Double-Button-1>", lambda _e, t=tono: (
+                self.elegir(t), self.responder(t)))
+            self.celdas[tono] = c
+        fila = tk.Frame(self.cuerpo, bg=PANEL)
+        fila.grid(row=1, column=1, sticky="w", pady=(px(10), 0))
+        tk.Label(fila, text="Código", font=app.f_chico, fg=GRIS,
+                 bg=PANEL).pack(side="left")
+        self.codigo = tk.StringVar(app.root, self.actual)
+        campo = app.campo_texto(fila, self.codigo, ancho=10)
+        campo.configure(font=app.f_mono)
+        campo.pack(side="left", padx=px(8), ipady=px(3))
+        self.aviso = tk.Label(fila, text="", font=app.f_chico, fg=ROJO_UI,
+                              bg=PANEL)
+        self.aviso.pack(side="left")
+        self.codigo.trace_add("write", lambda *_a: self._escrito())
+        self.usar = self.boton("Usar color",
+                               lambda: self.responder(self.actual),
+                               "primario", "play", ancho=130)
+        self.boton("Cancelar", self.cancelar, "fantasma")
+        self.ventana.bind("<Return>", lambda _e: self.responder(
+            self.actual) if self.actual else None)
+        self._pintar()
+
+    def elegir(self, color: str):
+        self.app.sonido.tocar("clic")
+        self.codigo.set(color)
+
+    def _escrito(self):
+        texto = self.codigo.get().strip().upper()
+        if not texto.startswith("#"):
+            texto = "#" + texto
+        if re.fullmatch(r"#[0-9A-F]{6}", texto):
+            self.actual = texto
+            self.aviso.configure(text="")
+        else:
+            self.actual = None
+            self.aviso.configure(text="✗ usa #RRGGBB")
+        self.app.activar(self.usar, self.actual is not None)
+        self._pintar()
+
+    def _pintar(self):
+        px = self.app.px
+        lado = px(34)
+        for tono, c in self.celdas.items():
+            c.delete("all")
+            elegido = tono == self.actual
+            if elegido:
+                rect_redondeado(c, 1, 1, lado - 1, lado - 1, px(8),
+                                fill="", outline=ACENTO, width=2)
+            rect_redondeado(c, px(5), px(5), lado - px(5), lado - px(5),
+                            px(6), fill=tono, outline=claro(tono, 0.3))
+        m = self.muestra
+        m.delete("all")
+        w = px(130)
+        if self.actual:
+            m.create_oval(w * 0.15, w * 0.78, w * 0.85, w * 0.95,
+                          fill="#070C12", width=0)
+            sprites.tanque(m, w / 2, w / 2, w * 0.85, self.numero,
+                           self.actual, Direccion.N, etiqueta="muestra")
+        else:
+            m.create_text(w / 2, w / 2, text="?", fill=GRIS_CLARO,
+                          font=self.app.f_titulo)
+
+
+class SelectorPrograma(VentanaEmergente):
+    """Elige el archivo .txt de un tanque sin salir del juego.
+
+    A la izquierda, las carpetas y los programas de la carpeta actual (cada
+    programa dice si es válido); a la derecha, el programa seleccionado con
+    sus colores. Doble clic entra a una carpeta o elige el programa.
+    """
+
+    def __init__(self, app, padre, numero: int,
+                 inicial: Optional[Path] = None):
+        super().__init__(app, padre, f"Programa del tanque {numero}",
+                         ACENTO, "≡", "Elige un archivo .txt")
+        px = app.px
+        carpeta = app.raiz / "tanques"
+        self.carpeta = (inicial if inicial and inicial.is_dir()
+                        else carpeta if carpeta.is_dir() else app.raiz)
+        self.elegido: Optional[Path] = None
+        self._filas: dict[Path, tuple] = {}
+
+        barra = tk.Frame(self.cuerpo, bg=PANEL)
+        barra.pack(fill="x", pady=(0, px(8)))
+        app.boton(barra, "", self.subir, icono="atras", alto=30, ancho=34,
+                  ayuda="Subir a la carpeta de arriba").pack(side="left")
+        app.boton(barra, "", lambda: self.abrir(carpeta if carpeta.is_dir()
+                                                else app.raiz),
+                  icono="casa", alto=30, ancho=34,
+                  ayuda="Los programas del juego (tanques/)").pack(
+                      side="left", padx=(px(6), px(10)))
+        self.ruta = tk.Label(barra, text="", font=app.f_chico, fg=GRIS,
+                             bg=PANEL, anchor="w")
+        self.ruta.pack(side="left", fill="x", expand=True)
+
+        zona = tk.Frame(self.cuerpo, bg=PANEL)
+        zona.pack(fill="both", expand=True)
+        izq = tk.Frame(zona, bg=PANEL_ALTO, highlightthickness=1,
+                       highlightbackground=BORDE, width=px(300),
+                       height=px(360))
+        izq.pack(side="left", fill="y")
+        izq.pack_propagate(False)
+        self.lienzo, self.lista, self._enlazar = lista_desplazable(
+            izq, PANEL_ALTO)
+        self.lienzo.pack(fill="both", expand=True, padx=px(4), pady=px(4))
+        der = tk.Frame(zona, bg=PANEL_ALTO, highlightthickness=1,
+                       highlightbackground=BORDE)
+        der.pack(side="left", fill="both", expand=True, padx=(px(10), 0))
+        self.estado = tk.Label(der, text="Selecciona un programa para "
+                               "verlo.", font=app.f_boton, fg=GRIS,
+                               bg=PANEL_ALTO, anchor="w")
+        self.estado.pack(fill="x", padx=px(10), pady=(px(8), px(4)))
+        self.vista = tk.Text(der, font=app.f_mono, bg=PANEL_ALTO, fg=TINTA,
+                             relief="flat", highlightthickness=0,
+                             wrap="none", width=40, height=18,
+                             padx=px(10), cursor="arrow")
+        self.vista.pack(fill="both", expand=True, pady=(0, px(8)))
+        etiquetas_de_codigo(self.vista, app)
+        self.vista.tag_configure("error", background="#3A161C")
+        self.vista.tag_configure("numero", foreground=GRIS_CLARO)
+
+        self.elegir_btn = self.boton("Elegir", self.confirmar, "primario",
+                                     "play", ancho=120)
+        self.boton("Cancelar", self.cancelar, "fantasma")
+        self.ventana.bind("<Return>", lambda _e: self.confirmar())
+        self.abrir(self.carpeta)
+
+    # ------------------------------------------------------------ carpetas
+    def entradas(self, carpeta: Path) -> list[Path]:
+        """Subcarpetas y archivos .txt, primero las carpetas."""
+        try:
+            todo = list(carpeta.iterdir())
+        except OSError:
+            return []
+        carpetas = sorted((p for p in todo if p.is_dir()
+                           and not p.name.startswith((".", "__"))),
+                          key=lambda p: p.name.lower())
+        archivos = sorted((p for p in todo if p.is_file()
+                           and p.suffix.lower() == ".txt"),
+                          key=lambda p: p.name.lower())
+        return (carpetas + archivos)[:300]
+
+    def abrir(self, carpeta: Path):
+        app, px = self.app, self.app.px
+        self.carpeta = Path(carpeta)
+        self.elegido = None
+        self.app.activar(self.elegir_btn, False)
+        try:
+            texto = self.carpeta.resolve().relative_to(
+                app.raiz.resolve()).as_posix() or "."
+        except ValueError:
+            texto = str(self.carpeta)
+        self.ruta.configure(text=texto)
+        for w in self.lista.winfo_children():
+            w.destroy()
+        self._filas = {}
+        entradas = self.entradas(self.carpeta)
+        if not entradas:
+            tk.Label(self.lista, text="No hay programas .txt aquí.",
+                     font=app.f_chico, fg=GRIS_CLARO, bg=PANEL_ALTO
+                     ).pack(anchor="w", padx=px(8), pady=px(8))
+        for ruta in entradas:
+            fila = tk.Frame(self.lista, bg=PANEL_ALTO, cursor="hand2")
+            fila.pack(fill="x")
+            dibujo = tk.Canvas(fila, width=px(22), height=px(22),
+                               bg=PANEL_ALTO, highlightthickness=0)
+            dibujo.pack(side="left", padx=(px(6), px(6)), pady=px(4))
+            textos = tk.Frame(fila, bg=PANEL_ALTO)
+            textos.pack(side="left", fill="x", expand=True)
+            nombre = tk.Label(textos, text=ruta.name, font=app.f_texto,
+                              fg=TINTA, bg=PANEL_ALTO, anchor="w")
+            nombre.pack(fill="x")
+            partes = [fila, dibujo, textos, nombre]
+            if ruta.is_dir():
+                icono(dibujo, "carpeta", px(11), px(11), px(16), ACENTO)
+            else:
+                resumen, tono = self._resumen(ruta)
+                icono(dibujo, "lapiz", px(11), px(11), px(14), tono)
+                nota = tk.Label(textos, text=resumen, font=app.f_chico,
+                                fg=tono, bg=PANEL_ALTO, anchor="w")
+                nota.pack(fill="x")
+                partes.append(nota)
+            for w in partes:
+                w.bind("<Button-1>", lambda _e, r=ruta: self.seleccionar(r))
+                w.bind("<Double-Button-1>",
+                       lambda _e, r=ruta: self.activar_entrada(r))
+            self._filas[ruta] = tuple(partes)
+        self.lienzo.yview_moveto(0)
+        self._enlazar()
+        self.vista.configure(state="normal")
+        self.vista.delete("1.0", "end")
+        self.vista.configure(state="disabled")
+        self.estado.configure(text="Selecciona un programa para verlo.",
+                              fg=GRIS)
+
+    def subir(self):
+        if self.carpeta.parent != self.carpeta:
+            self.abrir(self.carpeta.parent)
+
+    @staticmethod
+    def _resumen(ruta: Path) -> tuple[str, str]:
+        programa, errores = Interprete().cargar(ruta)
+        if not programa.instrucciones:
+            return "✗ ninguna instrucción válida", ROJO_UI
+        if errores:
+            n = len(errores)
+            return f"▲ {n} error{'es' if n > 1 else ''}", ACENTO
+        return f"✓ {len(programa)} instrucciones", VERDE_OK
+
+    # ------------------------------------------------------------ selección
+    def seleccionar(self, ruta: Path):
+        for r, partes in self._filas.items():
+            tono = PANEL_HOVER if r == ruta else PANEL_ALTO
+            for w in partes:
+                try:
+                    w.configure(bg=tono)
+                except tk.TclError:
+                    pass
+        if ruta.is_dir():
+            self.elegido = None
+            self.app.activar(self.elegir_btn, False)
+            self.estado.configure(text="Carpeta: doble clic para entrar.",
+                                  fg=GRIS)
+            return
+        self.elegido = ruta
+        self.app.activar(self.elegir_btn, True)
+        self._previa(ruta)
+
+    def activar_entrada(self, ruta: Path):
+        if ruta.is_dir():
+            self.abrir(ruta)
+        else:
+            self.seleccionar(ruta)
+            self.confirmar()
+
+    def _previa(self, ruta: Path):
+        contenido = leer_programa(ruta) or ""
+        _, errores = Interprete().analizar(contenido, nombre=ruta.stem)
+        malas = {e.linea for e in errores}
+        t = self.vista
+        t.configure(state="normal")
+        t.delete("1.0", "end")
+        for n, cruda in enumerate(contenido.replace("﻿", "")
+                                  .splitlines(), start=1):
+            inicio = t.index("end-1c")
+            t.insert("end", f"{n:>3}  ", "numero")
+            codigo, hay, comentario = cruda.partition("#")
+            for parte in _FICHA.findall(codigo):
+                etiqueta = _etiqueta_de(parte)
+                t.insert("end", parte, (etiqueta,) if etiqueta else ())
+            if hay:
+                t.insert("end", "#" + comentario, "comentario")
+            t.insert("end", "\n")
+            if n in malas:
+                t.tag_add("error", inicio, t.index("end-1c"))
+        t.configure(state="disabled")
+        resumen, tono = self._resumen(ruta)
+        self.estado.configure(text=f"{ruta.name}  ·  {resumen}", fg=tono)
+
+    def confirmar(self):
+        if self.elegido is not None:
+            self.responder(self.elegido)
+
+
+#: Nombre de archivo admitido para un programa: letras, números, guiones,
+#: guiones bajos y espacios.
+_NOMBRE_VALIDO = re.compile(r"^[\w\- ]+$")
+
+_ETIQUETAS_CODIGO = tuple(f"p_{p}" for p in _COLOR_PALABRA) + (
+    "direccion", "entero", "signo", "comentario")
+
+
+class EditorPrograma:
+    """Escribe o modifica el programa de un tanque sin salir del juego.
+
+    Mientras se escribe, cada línea se revisa: el margen marca ✓ o ✗, las
+    líneas con error se pintan en rojo (el globo y la lista de abajo dicen
+    por qué) y un aviso resume si el programa está bien escrito. A la
+    derecha están las instrucciones disponibles: un clic las inserta.
+    «Aleatorio» escribe un programa válido que luego se puede modificar.
+    """
+
+    def __init__(self, app: "AppGrafica", ruta: Optional[Path],
+                 numero: int, color: str, config: Configuracion,
+                 al_guardar: Optional[Callable[[Path], None]] = None,
+                 al_cerrar: Optional[Callable[[], None]] = None):
+        self.app, self.numero, self.color = app, numero, color
+        self.config = config
+        self.ruta = Path(ruta) if ruta else None
+        self.al_guardar, self.al_cerrar = al_guardar, al_cerrar
+        self.globo = Globo(app)
+        self._errores: dict[int, list] = {}
+        self._buenas: set[int] = set()
+        self._tarea: Optional[str] = None
+        self.validas = self.con_error = 0
+        self.guardado: Optional[Path] = None
+        px = app.px
+
+        v = tk.Toplevel(app.root, bg=FONDO_VENTANA)
+        v.title(f"Programar el tanque {numero}")
+        v.geometry(f"{px(1060)}x{px(720)}")
+        v.minsize(px(840), px(540))
+        v.protocol("WM_DELETE_WINDOW", self.cancelar)
+        v.bind("<Escape>", lambda _e: self.cancelar())
+        v.bind("<Control-s>", lambda _e: (self.guardar(), "break")[1])
+        self.ventana = v
+
+        self.cabeza = tk.Canvas(v, height=px(76), bg=FONDO_BARRA,
+                                highlightthickness=0)
+        self.cabeza.pack(fill="x")
+        self.cabeza.bind("<Configure>", lambda _e: self._dibujar_cabeza())
+
+        cuerpo = tk.Frame(v, bg=FONDO_VENTANA)
+        cuerpo.pack(fill="both", expand=True, padx=px(16), pady=px(12))
+
+        # --- el nombre del archivo
+        fila = tk.Frame(cuerpo, bg=FONDO_VENTANA)
+        fila.pack(fill="x")
+        app.rotulo(fila, "Nombre").pack(side="left")
+        self.nombre = tk.StringVar(app.root, self.ruta.stem if self.ruta
+                                   else self._nombre_libre())
+        self.campo_nombre = app.campo_texto(fila, self.nombre, ancho=26)
+        self.campo_nombre.pack(side="left", padx=(px(10), px(4)),
+                               ipady=px(4))
+        tk.Label(fila, text=".txt", font=app.f_texto, fg=GRIS,
+                 bg=FONDO_VENTANA).pack(side="left")
+        self.donde = tk.Label(fila, text="", font=app.f_chico,
+                              fg=GRIS_CLARO, bg=FONDO_VENTANA, anchor="w")
+        self.donde.pack(side="left", padx=(px(12), 0))
+
+        # --- pie: acciones (se empaca antes que el centro para que nunca
+        # quede fuera de la ventana)
+        pie = tk.Frame(cuerpo, bg=FONDO_VENTANA)
+        pie.pack(side="bottom", fill="x", pady=(px(10), 0))
+        app.boton(pie, "Aleatorio", self.aleatorio, icono="dado",
+                  ayuda="Escribir un programa válido al azar; luego puedes "
+                        "modificarlo").pack(side="left")
+        app.boton(pie, "Borrar todo", self.limpiar, icono="x",
+                  estilo="fantasma").pack(side="left", padx=px(8))
+        app.boton(pie, "Guardar", self.guardar, primario=True,
+                  icono="play", ancho=140,
+                  ayuda="Guardar el programa  (Ctrl+S)").pack(side="right")
+        app.boton(pie, "Cancelar", self.cancelar, estilo="fantasma",
+                  icono="atras").pack(side="right", padx=px(8))
+
+        centro = tk.Frame(cuerpo, bg=FONDO_VENTANA)
+        centro.pack(fill="both", expand=True, pady=(px(10), 0))
+
+        # --- derecha: las instrucciones disponibles
+        ayuda = Panel(centro, app, modo="ambos", relleno=12, acento=CIAN)
+        ayuda.configure(width=px(330))
+        ayuda.pack(side="right", fill="y", padx=(px(12), 0))
+        self._catalogo(ayuda.cuerpo)
+
+        # --- izquierda: el código con su margen y el resultado
+        izq = tk.Frame(centro, bg=FONDO_VENTANA)
+        izq.pack(side="left", fill="both", expand=True)
+        self.estado = tk.Label(izq, text="", font=app.f_boton, fg=GRIS,
+                               bg=FONDO_VENTANA, anchor="w",
+                               justify="left")
+        self.estado.pack(side="bottom", fill="x", pady=(px(8), 0))
+        caja_err = Panel(izq, app, modo="x", relleno=8)
+        caja_err.pack(side="bottom", fill="x", pady=(px(8), 0))
+        self.lista = tk.Text(caja_err.cuerpo, height=4, font=app.f_chico,
+                             bg=PANEL, fg=TINTA, relief="flat",
+                             highlightthickness=0, wrap="word",
+                             cursor="arrow", padx=px(4))
+        self.lista.pack(fill="x")
+        self.lista.tag_configure("linea", foreground=ROJO_UI,
+                                 font=app.f_boton)
+        self.lista.tag_configure("ok", foreground=VERDE_OK)
+        self.lista.tag_configure("gris", foreground=GRIS)
+        self.lista.tag_bind("ir", "<Button-1>", self._ir_a_error)
+        self.lista.tag_bind("ir", "<Enter>",
+                            lambda _e: self.lista.configure(cursor="hand2"))
+        self.lista.tag_bind("ir", "<Leave>",
+                            lambda _e: self.lista.configure(cursor="arrow"))
+
+        caja = Panel(izq, app, modo="ambos", relleno=10, acento=color)
+        caja.pack(fill="both", expand=True)
+        self.margen = tk.Canvas(caja.cuerpo, width=px(52), bg=PANEL,
+                                highlightthickness=0)
+        self.margen.pack(side="left", fill="y")
+        tk.Frame(caja.cuerpo, bg=BORDE, width=1).pack(side="left", fill="y")
+        self.texto = tk.Text(caja.cuerpo, font=(app.f_mono[0], 11),
+                             bg=PANEL, fg=TINTA, relief="flat",
+                             highlightthickness=0, wrap="none",
+                             undo=True, padx=px(8), pady=px(4),
+                             spacing1=px(3), spacing3=px(3),
+                             insertbackground=ACENTO, insertwidth=2,
+                             selectbackground=ACENTO_OSCURO,
+                             selectforeground=TINTA,
+                             yscrollcommand=lambda *_a: self._pintar_margen())
+        self.texto.pack(side="left", fill="both", expand=True)
+        etiquetas_de_codigo(self.texto, app)
+        for palabra in _COLOR_PALABRA:
+            self.texto.tag_configure(f"p_{palabra}",
+                                     font=(app.f_mono[0], 11, "bold"))
+        self.texto.tag_configure("error", background="#3A161C",
+                                 underline=True)
+        self.texto.bind("<<Modified>>", self._modificado)
+        self.texto.bind("<Motion>", self._sobre)
+        self.texto.bind("<Leave>", lambda _e: self.globo.ocultar())
+        self.texto.bind("<KeyRelease>", lambda _e: self._pintar_margen())
+
+        contenido = leer_programa(self.ruta) if self.ruta else None
+        if contenido:
+            self.texto.insert("1.0", contenido.replace("﻿", ""))
+        self.texto.edit_reset()
+        self._original = (self.contenido(), self.nombre.get())
+        self.nombre.trace_add("write", lambda *_a: self._pintar_donde())
+        self._pintar_donde()
+        self.revisar()
+        v.transient(app.root)
+        self.texto.focus_set()
+        self.texto.mark_set("insert", "end-1c")
+
+    # ------------------------------------------------------------ catálogo
+    def _catalogo(self, padre):
+        """La lista de instrucciones disponibles; un clic inserta una."""
+        app, px = self.app, self.app.px
+        app.rotulo(padre, "Instrucciones disponibles", color=CIAN
+                   ).pack(anchor="w")
+        tk.Label(padre, text="Clic para insertarla en el programa; luego "
+                 "cambia la dirección o el número. La rueda del ratón "
+                 "recorre la lista.", font=app.f_chico,
+                 fg=GRIS, bg=PANEL, anchor="w", justify="left",
+                 wraplength=px(300)).pack(fill="x", pady=(px(2), px(6)))
+        # La lista va en un lienzo que se recorre con la rueda: así cabe
+        # en ventanas bajas sin cortar nada.
+        lienzo = tk.Canvas(padre, bg=PANEL, highlightthickness=0, bd=0)
+        lienzo.pack(fill="both", expand=True)
+        padre = tk.Frame(lienzo, bg=PANEL)
+        dentro_id = lienzo.create_window(0, 0, window=padre, anchor="nw")
+        padre.bind("<Configure>", lambda _e: lienzo.configure(
+            scrollregion=lienzo.bbox("all")))
+        lienzo.bind("<Configure>", lambda e: lienzo.itemconfigure(
+            dentro_id, width=e.width))
+        self.lista_instrucciones = lienzo
+
+        def rueda(e):
+            if lienzo.bbox("all") and                     lienzo.bbox("all")[3] > lienzo.winfo_height():
+                lienzo.yview_scroll(-1 if e.delta > 0 else 1, "units")
+        self._rueda = rueda
+        self.fichas: dict[str, tk.Frame] = {}
+        for plantilla, descripcion in CATALOGO:
+            palabra = plantilla.split("(")[0].split()[0]
+            if palabra == "IF":
+                palabra = plantilla.split()[1].split("(")[0]
+            tono = _COLOR_PALABRA.get(palabra, TINTA)
+            ficha = tk.Frame(padre, bg=PANEL_ALTO, cursor="hand2")
+            ficha.pack(fill="x", pady=px(2))
+            tk.Frame(ficha, bg=tono, width=px(3)).pack(side="left",
+                                                        fill="y")
+            dentro = tk.Frame(ficha, bg=PANEL_ALTO)
+            dentro.pack(side="left", fill="x", expand=True, padx=px(8),
+                        pady=px(4))
+            codigo = tk.Label(dentro, text=plantilla, bg=PANEL_ALTO,
+                              fg=tono, font=(app.f_mono[0], 10, "bold"),
+                              anchor="w")
+            codigo.pack(fill="x")
+            texto = tk.Label(dentro, text=descripcion, bg=PANEL_ALTO,
+                             fg=GRIS, font=app.f_chico, anchor="w",
+                             justify="left", wraplength=px(270))
+            texto.pack(fill="x")
+            partes = (ficha, dentro, codigo, texto)
+            for w in partes:
+                w.bind("<Button-1>",
+                       lambda _e, p=plantilla: self._clic_ficha(p))
+                w.bind("<Enter>", lambda _e, ws=partes: self._tenir(
+                    ws, PANEL_HOVER))
+                w.bind("<Leave>", lambda _e, ws=partes: self._tenir(
+                    ws, PANEL_ALTO))
+            self.fichas[plantilla] = ficha
+        tk.Frame(padre, bg=BORDE, height=1).pack(fill="x",
+                                                 pady=(px(8), px(6)))
+        for nota in NOTAS:
+            tk.Label(padre, text="•  " + nota, font=app.f_chico,
+                     fg=GRIS, bg=PANEL, anchor="w", justify="left",
+                     wraplength=px(290)).pack(fill="x", pady=px(1))
+        pendientes = [lienzo]
+        while pendientes:                 # la rueda funciona sobre todo
+            w = pendientes.pop()
+            w.bind("<MouseWheel>", rueda, add="+")
+            pendientes.extend(w.winfo_children())
+
+    @staticmethod
+    def _tenir(widgets, color):
+        for w in widgets:
+            try:
+                w.configure(bg=color)
+            except tk.TclError:
+                pass
+
+    def _clic_ficha(self, plantilla: str):
+        self.app.sonido.tocar("clic")
+        self.insertar(plantilla)
+
+    def insertar(self, plantilla: str):
+        """Pone la instrucción en la línea del cursor, o en una nueva
+        debajo si esa línea ya tiene algo."""
+        t = self.texto
+        if t.get("insert linestart", "insert lineend").strip():
+            t.mark_set("insert", "insert lineend")
+            t.insert("insert", "\n" + plantilla)
+        else:
+            t.delete("insert linestart", "insert lineend")
+            t.insert("insert", plantilla)
+        t.see("insert")
+        t.focus_set()
+        self.revisar()
+
+    # ------------------------------------------------------------ revisión
+    def contenido(self) -> str:
+        return self.texto.get("1.0", "end-1c")
+
+    def _modificado(self, _e=None):
+        if not self.texto.edit_modified():
+            return
+        self.texto.edit_modified(False)
+        if self._tarea is not None:
+            self.texto.after_cancel(self._tarea)
+        self._tarea = self.texto.after(150, self.revisar)
+
+    def revisar(self):
+        """Analiza el programa como lo hará el juego y lo dice al momento."""
+        if self._tarea is not None:
+            try:
+                self.texto.after_cancel(self._tarea)
+            except tk.TclError:
+                pass
+            self._tarea = None
+        contenido = self.contenido()
+        vacio = not contenido.strip()
+        programa, errores = Interprete().analizar(
+            contenido, nombre=self.nombre.get() or "programa")
+        self._errores = {}
+        for e in errores:
+            if e.linea:
+                self._errores.setdefault(e.linea, []).append(e)
+        self._buenas = {i.linea for i in programa.instrucciones}
+        self.validas = len(programa.instrucciones)
+        self.con_error = len(self._errores)
+        self._colorear(contenido)
+        self._pintar_margen()
+        self._pintar_lista(vacio)
+        if vacio:
+            texto, color = ("Escribe una instrucción por línea, elige una "
+                            "de la derecha o pulsa «Aleatorio».", GRIS)
+        elif not self.validas:
+            texto, color = ("✗ Ninguna instrucción es válida: el tanque no "
+                            "podría jugar. Revisa los avisos en rojo.",
+                            ROJO_UI)
+        elif self.con_error:
+            n = self.con_error
+            texto, color = (f"▲ {n} línea{'s' if n > 1 else ''} con "
+                            f"error{'es' if n > 1 else ''}: se saltarán al "
+                            f"jugar. Las otras {self.validas} están bien.",
+                            ACENTO)
+        else:
+            n = self.validas
+            texto, color = (f"✓ ¡Bien escrito! {n} instrucci"
+                            f"{'ones' if n > 1 else 'ón'} válida"
+                            f"{'s' if n > 1 else ''}.", VERDE_OK)
+        self.estado.configure(text=texto, fg=color)
+        self._dibujar_cabeza()
+
+    def _colorear(self, contenido: str):
+        t = self.texto
+        for etiqueta in _ETIQUETAS_CODIGO + ("error",):
+            t.tag_remove(etiqueta, "1.0", "end")
+        for n, linea in enumerate(contenido.split("\n"), start=1):
+            codigo, hay, _ = linea.partition("#")
+            col = 0
+            for parte in _FICHA.findall(codigo):
+                etiqueta = _etiqueta_de(parte)
+                if etiqueta:
+                    t.tag_add(etiqueta, f"{n}.{col}",
+                              f"{n}.{col + len(parte)}")
+                col += len(parte)
+            if hay:
+                t.tag_add("comentario", f"{n}.{len(codigo)}", f"{n}.end")
+            if n in self._errores:
+                t.tag_add("error", f"{n}.0", f"{n}.end")
+
+    def _pintar_margen(self):
+        """Número de cada línea visible y si está bien (✓) o mal (✗)."""
+        c, t, px = self.margen, self.texto, self.app.px
+        try:
+            c.delete("all")
+            i = t.index("@0,0")
+            while True:
+                d = t.dlineinfo(i)
+                if d is None:
+                    break
+                n = int(i.split(".")[0])
+                y = d[1] + d[3] / 2
+                mal = n in self._errores
+                c.create_text(px(28), y, text=str(n), anchor="e",
+                              fill=ROJO_UI if mal else GRIS_CLARO,
+                              font=self.app.f_mono)
+                if mal or n in self._buenas:
+                    c.create_text(px(42), y, text="✗" if mal else "✓",
+                                  fill=ROJO_UI if mal else VERDE_OK,
+                                  font=self.app.f_boton)
+                siguiente = t.index(f"{i}+1line")
+                if siguiente == i:
+                    break
+                i = siguiente
+        except tk.TclError:
+            pass
+
+    def _pintar_lista(self, vacio: bool):
+        """Debajo del código: qué está mal en cada línea, o que todo va
+        bien. Un clic en un error lleva a su línea."""
+        lista = self.lista
+        lista.configure(state="normal")
+        lista.delete("1.0", "end")
+        if vacio:
+            lista.insert("end", "Aún no hay nada que revisar.", "gris")
+        elif not self._errores:
+            lista.insert("end", "Sin errores: cada línea es una "
+                         "instrucción que el tanque entiende.", "ok")
+        else:
+            for n in sorted(self._errores):
+                inicio = lista.index("end-1c")
+                lista.insert("end", f"Línea {n}:  ", ("linea", f"l{n}"))
+                lista.insert("end", self._errores[n][0].mensaje + "\n",
+                             f"l{n}")
+                lista.tag_add("ir", inicio, lista.index("end-1c"))
+        lista.configure(state="disabled")
+
+    def _ir_a_error(self, e):
+        for etiqueta in self.lista.tag_names(f"@{e.x},{e.y}"):
+            if re.fullmatch(r"l\d+", etiqueta):
+                self.ir_a_linea(int(etiqueta[1:]))
+                return
+
+    def ir_a_linea(self, n: int):
+        self.texto.mark_set("insert", f"{n}.end")
+        self.texto.see("insert")
+        self.texto.focus_set()
+
+    def _sobre(self, e):
+        t = self.texto
+        n = int(t.index(f"@{e.x},{e.y}").split(".")[0])
+        if n in self._errores:
+            mensajes = "\n".join(f"• {err.mensaje}"
+                                 for err in self._errores[n])
+            self.globo.mostrar(self.ventana, e.x_root + self.app.px(18),
+                               e.y_root + self.app.px(14),
+                               f"Línea {n}: error",
+                               f"{mensajes}\n\nSi la dejas así, se salta "
+                               f"al jugar.")
+        else:
+            self.globo.ocultar()
+
+    def _dibujar_cabeza(self):
+        try:
+            cabeza_programa(
+                self.app, self.cabeza, self.numero, self.color,
+                f"TANQUE {self.numero}  ·  EDITOR",
+                f"{self._limpio() or 'sin nombre'}.txt",
+                ((f"{self.con_error} con error",
+                  ROJO_UI if self.con_error else GRIS_CLARO),
+                 (f"{self.validas} válidas",
+                  VERDE_OK if self.validas else GRIS_CLARO)))
+        except tk.TclError:
+            pass
+
+    # ------------------------------------------------------------ archivo
+    def _nombre_libre(self) -> str:
+        carpeta = self.app.raiz / "tanques"
+        nombre, k = f"mi_tanque{self.numero}", 2
+        while (carpeta / f"{nombre}.txt").exists():
+            nombre, k = f"mi_tanque{self.numero}-{k}", k + 1
+        return nombre
+
+    def _limpio(self) -> str:
+        nombre = self.nombre.get().strip()
+        return nombre[:-4] if nombre.lower().endswith(".txt") else nombre
+
+    def destino(self) -> Path:
+        """Dónde se guarda: junto al archivo original o en tanques/."""
+        nombre = self._limpio()
+        if self.ruta is not None:
+            return self.ruta.with_name(f"{nombre}.txt")
+        return self.app.raiz / "tanques" / f"{nombre}.txt"
+
+    def _pintar_donde(self):
+        nombre = self._limpio()
+        if not nombre:
+            self.donde.configure(text="✗ escribe un nombre", fg=ROJO_UI)
+        elif not _NOMBRE_VALIDO.match(nombre):
+            self.donde.configure(text="✗ usa letras, números, - o _",
+                                 fg=ROJO_UI)
+        else:
+            destino = self.destino()
+            try:
+                texto = destino.resolve().relative_to(
+                    self.app.raiz.resolve()).as_posix()
+            except ValueError:
+                texto = str(destino)
+            nuevo = self.ruta is None or destino != self.ruta
+            aviso = (" · ya existe: se reemplazará" if nuevo
+                     and destino.exists() else "")
+            self.donde.configure(text=f"se guarda en {texto}{aviso}",
+                                 fg=ACENTO if aviso else GRIS_CLARO)
+        self._dibujar_cabeza()
+
+    def hay_cambios(self) -> bool:
+        return (self.contenido(), self.nombre.get()) != self._original
+
+    def _confirmar(self, titulo: str, texto: str, si: str = "Sí",
+                   no: str = "Cancelar", peligro: bool = False) -> bool:
+        return self.app.preguntar(self.ventana, titulo, texto, si, no,
+                                  peligro)
+
+    # ------------------------------------------------------------ acciones
+    def aleatorio(self):
+        """Escribe un programa válido al azar; se puede modificar luego."""
+        if self.contenido().strip() and not self._confirmar(
+                "Programa aleatorio", "¿Reemplazar lo que está escrito por "
+                "un programa al azar? Después podrás modificarlo.",
+                si="Reemplazar", peligro=True):
+            return
+        t = self.texto
+        t.delete("1.0", "end")
+        t.insert("1.0", generar_programa())
+        t.mark_set("insert", "1.0")
+        t.see("1.0")
+        self.revisar()
+
+    def limpiar(self):
+        if self.contenido().strip() and self._confirmar(
+                "Borrar todo", "¿Seguro que quieres borrar todo el "
+                "programa?", si="Borrar", peligro=True):
+            self.texto.delete("1.0", "end")
+            self.revisar()
+
+    def guardar(self) -> bool:
+        """Revisa, avisa si algo no está bien y guarda el archivo."""
+        nombre = self._limpio()
+        if not nombre or not _NOMBRE_VALIDO.match(nombre):
+            self.app.sonido.tocar("apagado")
+            self._pintar_donde()
+            self.campo_nombre.focus_set()
+            return False
+        self.revisar()
+        if not self.validas:
+            if not self._confirmar(
+                    "Programa sin instrucciones válidas",
+                    "Ninguna línea es una instrucción válida: el tanque no "
+                    "podrá jugar con este programa.\n\n¿Guardarlo de todos "
+                    "modos?", si="Guardar así", no="Seguir editando"):
+                return False
+        elif self.con_error:
+            if not self._confirmar(
+                    "Hay líneas con errores",
+                    f"{self.con_error} líneas tienen errores y se saltarán "
+                    f"al jugar.\n\n¿Guardar así?", si="Guardar así",
+                    no="Seguir editando"):
+                return False
+        destino = self.destino()
+        if destino.exists() and destino != self.ruta and not self._confirmar(
+                "El archivo ya existe",
+                f"Ya hay un programa llamado {destino.name}.\n\n"
+                f"¿Reemplazarlo?", si="Reemplazar", peligro=True):
+            return False
+        contenido = self.contenido()
+        if contenido and not contenido.endswith("\n"):
+            contenido += "\n"
+        try:
+            destino.parent.mkdir(parents=True, exist_ok=True)
+            destino.write_text(contenido, encoding="utf-8")
+        except OSError as e:
+            self.app.avisar(self.ventana, "No se pudo guardar",
+                            f"No se pudo escribir {destino.name}.", str(e))
+            return False
+        self.guardado = self.ruta = destino
+        self._original = (self.contenido(), self.nombre.get())
+        if self.al_guardar:
+            self.al_guardar(destino)
+        self.cerrar()
+        return True
+
+    def cancelar(self):
+        if self.hay_cambios() and not self._confirmar(
+                "Salir sin guardar", "Hay cambios sin guardar. ¿Salir y "
+                "perderlos?", si="Salir sin guardar", no="Seguir editando",
+                peligro=True):
+            return
+        self.cerrar()
+
+    def cerrar(self):
+        self.globo.ocultar()
+        if self._tarea is not None:
+            try:
+                self.texto.after_cancel(self._tarea)
+            except tk.TclError:
+                pass
+            self._tarea = None
         try:
             self.ventana.destroy()
         except tk.TclError:
@@ -1389,6 +2444,7 @@ class AppGrafica:
         self._proveedor = None
         self._interruptores: dict[str, Boton] = {}
         self.opciones_menu: dict[str, Boton] = {}
+        self._subtitulo_menu: Optional[tk.Label] = None
         self._fuentes()
 
     # ---------------------------------------------------------- utilidades
@@ -1504,9 +2560,10 @@ class AppGrafica:
         if prov is not None:
             titulo, subtitulo, opciones = prov.opciones_del_menu()
             self.rotulo(cuerpo, titulo).pack(anchor="w")
-            tk.Label(cuerpo, text=subtitulo, font=self.f_chico, fg=GRIS,
-                     bg=PANEL, anchor="w").pack(fill="x",
-                                                pady=(px(2), px(10)))
+            self._subtitulo_menu = tk.Label(cuerpo, text=subtitulo,
+                                            font=self.f_chico, fg=GRIS,
+                                            bg=PANEL, anchor="w")
+            self._subtitulo_menu.pack(fill="x", pady=(px(2), px(10)))
             for clave, texto, simbolo, orden, estilo, activo in opciones:
                 b = self.boton(cuerpo, texto, orden, ancho=290, alto=38,
                                icono=simbolo, estilo=estilo,
@@ -1546,6 +2603,28 @@ class AppGrafica:
         tk.Misc.tkraise(menu)              # Panel es Canvas: su lift() es otro
         self._desplegable = menu
 
+    def refrescar_menu(self):
+        """Pone al día el menú abierto (la partida sigue mientras tanto):
+        la ronda, el estado y qué opciones se pueden usar."""
+        prov = self._proveedor
+        if self._desplegable is None or prov is None:
+            return
+        try:
+            _, subtitulo, opciones = prov.opciones_del_menu()
+            if self._subtitulo_menu is not None:
+                self._subtitulo_menu.configure(text=subtitulo)
+            for clave, texto, simbolo, _o, _e, activo in opciones:
+                b = self.opciones_menu.get(clave)
+                if b is None:
+                    continue
+                if (b.texto, b.icono) != (texto, simbolo):
+                    b.texto, b.icono = texto, simbolo
+                    b._dibujar()
+                if (str(b["state"]) == "normal") != activo:
+                    self.activar(b, activo)
+        except tk.TclError:
+            pass
+
     def cerrar_menu(self, continuar: bool = False):
         if self._desplegable is None:
             return
@@ -1554,6 +2633,7 @@ class AppGrafica:
         except tk.TclError:
             pass
         self._desplegable = None
+        self._subtitulo_menu = None
         self._interruptores = {}
         if self._proveedor is not None:
             self._proveedor.al_cerrar_menu(continuar)
@@ -1626,6 +2706,7 @@ class AppGrafica:
     def _nueva_pantalla(self, titulo: str, encabezado=True) -> tk.Frame:
         self._portada = {}
         self._desplegable = None
+        self._subtitulo_menu = None
         self._proveedor = None
         self._interruptores = {}
         self.opciones_menu = {}
@@ -1882,6 +2963,38 @@ class AppGrafica:
         ventana.bind("<Escape>", lambda _e: ventana.destroy())
         self.root.wait_window(ventana)
 
+    # ---------------------------------------------------- ventanas emergentes
+    def dialogo(self, padre, titulo: str, texto: str, tipo: str = "pregunta",
+                botones=(("Aceptar", True, "primario"),), detalle: str = "",
+                cancelar=None):
+        """Toda pregunta o aviso pasa por aquí, con el diseño del juego (las
+        pruebas lo sustituyen para no esperar a nadie)."""
+        return Dialogo(self, padre, titulo, texto, tipo, botones, detalle,
+                       cancelar).mostrar()
+
+    def preguntar(self, padre, titulo: str, texto: str, si: str = "Sí",
+                  no: str = "Cancelar", peligro: bool = False) -> bool:
+        """Sí o no. Con `peligro` (borrar, reemplazar, perder cambios) la
+        ventana y el botón van en rojo."""
+        return bool(self.dialogo(
+            padre, titulo, texto, "peligro" if peligro else "pregunta",
+            ((no, False, "fantasma"),
+             (si, True, "peligro" if peligro else "primario")),
+            cancelar=False))
+
+    def avisar(self, padre, titulo: str, texto: str, detalle: str = "",
+               tipo: str = "error"):
+        self.dialogo(padre, titulo, texto, tipo,
+                     (("Entendido", True, "primario"),), detalle)
+
+    def elegir_color(self, padre, numero: int,
+                     color: str) -> Optional[str]:
+        return SelectorColor(self, padre, numero, color).mostrar()
+
+    def elegir_programa(self, padre, numero: int,
+                        inicial: Optional[Path] = None) -> Optional[Path]:
+        return SelectorPrograma(self, padre, numero, inicial).mostrar()
+
     # ---------------------------------------------------------- configuración
     def configurar(self, config: Configuracion) -> Optional[Configuracion]:
         """Figura 11. Devuelve la configuración elegida, o None para volver."""
@@ -1893,12 +3006,18 @@ class AppGrafica:
             nueva, problemas = pantalla.leer()
             if not problemas:
                 return nueva
-            messagebox.showerror("Configuración incompleta",
-                                 "\n".join(problemas), parent=self.root)
+            self.avisar(self.root, "Configuración incompleta",
+                        "Corrige esto antes de iniciar la batalla:",
+                        "\n".join(f"• {p}" for p in problemas), "aviso")
 
     def mostrar_errores(self, texto: str):
-        messagebox.showerror("Errores en los programas", texto,
-                             parent=self.root)
+        lineas = texto.splitlines()
+        if lineas and lineas[0].endswith(":"):
+            titular, detalle = lineas[0], "\n".join(l.strip()
+                                                   for l in lineas[1:])
+        else:
+            titular, detalle = "Revisa los programas de los tanques.", texto
+        self.avisar(self.root, "Errores en los programas", titular, detalle)
 
     # ---------------------------------------------------------- partida
     def partida(self, config: Configuracion, velocidad: int = 5,
@@ -1937,10 +3056,10 @@ class PantallaConfiguracion:
         self.cuenta = tk.Label(cabeza, text="", font=app.f_boton, fg=ACENTO,
                                bg=FONDO_VENTANA)
         self.cuenta.pack(side="right")
-        tk.Label(cuerpo, text="Asigna un programa .txt a cada tanque. Se "
-                 "revisa al momento: «Ver» lo muestra línea por línea y las "
-                 "líneas con errores se saltan al jugar. Clic en el tanque "
-                 "para cambiar su color.",
+        tk.Label(cuerpo, text="Asigna un programa .txt a cada tanque o "
+                 "escríbelo con «Programar». Se revisa al momento: «Ver» lo "
+                 "muestra línea por línea y las líneas con errores se "
+                 "saltan al jugar. Clic en el tanque para cambiar su color.",
                  font=app.f_chico, fg=GRIS, bg=FONDO_VENTANA, anchor="w"
                  ).pack(fill="x", pady=(px(2), px(8)))
 
@@ -2154,13 +3273,19 @@ class PantallaConfiguracion:
                                      ipady=px(4))
         acciones = tk.Frame(c, bg=PANEL)
         acciones.pack(fill="x")
-        app.boton(acciones, "Examinar", lambda k=i: self._examinar(k),
-                  icono="carpeta", alto=30).pack(side="left")
+        app.boton(acciones, "", lambda k=i: self._examinar(k),
+                  icono="carpeta", alto=30,
+                  ayuda="Examinar: elegir un archivo .txt").pack(side="left")
         ver = app.boton(acciones, "Ver", lambda k=i: self._ver(k),
                         icono="ojo", alto=30,
                         ayuda="Ver el programa línea por línea")
         ver.pack(side="left", padx=(px(6), 0))
         self.ver.append(ver)
+        app.boton(acciones, "Programar", lambda k=i: self.programar(k),
+                  icono="lapiz", alto=30,
+                  ayuda="Escribir o modificar el programa aquí, con la "
+                        "lista de instrucciones y un programa aleatorio"
+                  ).pack(side="left", padx=(px(6), 0))
         app.boton(acciones, "", lambda k=i: self.rutas[k].set(""),
                   icono="x", alto=30, ayuda="Quitar este tanque"
                   ).pack(side="right")
@@ -2329,7 +3454,33 @@ class PantallaConfiguracion:
             return
         self.globo.ocultar()
         VisorPrograma(self.app, self._ruta(texto), i + 1, self.colores[i],
-                      self.config, al_cerrar=lambda: self._revisar(i))
+                      self.config, al_cerrar=lambda: self._revisar(i),
+                      al_guardar=lambda ruta: self._asignar(i, ruta))
+
+    def programar(self, i) -> EditorPrograma:
+        """Abre el editor del juego para el tanque i: con su programa si
+        ya tiene uno, o en blanco para escribir uno nuevo."""
+        texto = self.rutas[i].get().strip()
+        ruta = self._ruta(texto) if texto else None
+        if ruta is not None and not ruta.is_file():
+            ruta = None
+        self.globo.ocultar()
+        return EditorPrograma(self.app, ruta, i + 1, self.colores[i],
+                              self.config,
+                              al_guardar=lambda r: self._asignar(i, r))
+
+    def _asignar(self, i, ruta: Path):
+        """El programa guardado pasa a ser el del tanque i."""
+        self.rutas[i].set(self._relativa(Path(ruta)))
+        self._revisar(i)
+
+    def _relativa(self, ruta: Path) -> str:
+        """Ruta relativa al proyecto si está dentro; si no, absoluta."""
+        try:
+            ruta = ruta.resolve().relative_to(self.app.raiz.resolve())
+        except ValueError:
+            pass
+        return ruta.as_posix()
 
     def _globo_aviso(self, i, e):
         """Al pasar sobre un aviso con errores, los resume en un globo."""
@@ -2342,7 +3493,7 @@ class PantallaConfiguracion:
             lineas.append(f"… y {len(errores) - 4} más")
         if i in self._fatales:
             titulo = "Este tanque no puede jugar"
-            pie = "Ninguna línea es válida. Corrígelo con «Ver»."
+            pie = "Ninguna línea es válida. Corrígelo con «Programar»."
             color = ROJO_UI
         else:
             titulo = f"{len(errores)} líneas se saltarán al jugar"
@@ -2408,26 +3559,18 @@ class PantallaConfiguracion:
                                     self._paneles[i].winfo_height())
 
     def _color(self, i):
-        _, elegido = colorchooser.askcolor(self.colores[i],
-                                           parent=self.app.root,
-                                           title=f"Color del tanque {i + 1}")
+        elegido = self.app.elegir_color(self.app.root, i + 1,
+                                        self.colores[i])
         if elegido:
             self.colores[i] = elegido.upper()
             self._pintar_muestra(i)
 
     def _examinar(self, i):
-        inicial = self.app.raiz / "tanques"
-        ruta = filedialog.askopenfilename(
-            parent=self.app.root, title=f"Programa del tanque {i + 1}",
-            initialdir=inicial if inicial.is_dir() else self.app.raiz,
-            filetypes=[("Programas de tanque", "*.txt"), ("Todos", "*.*")])
+        texto = self.rutas[i].get().strip()
+        inicial = self._ruta(texto).parent if texto else None
+        ruta = self.app.elegir_programa(self.app.root, i + 1, inicial)
         if ruta:
-            ruta = Path(ruta)
-            try:
-                ruta = ruta.resolve().relative_to(self.app.raiz.resolve())
-            except ValueError:
-                pass                       # fuera del proyecto: absoluta
-            self.rutas[i].set(ruta.as_posix())
+            self.rutas[i].set(self._relativa(Path(ruta)))
 
     def leer(self) -> tuple[Optional[Configuracion], list[str]]:
         """Arma la configuración del formulario y la valida."""
@@ -2509,7 +3652,6 @@ class VentanaPartida(Vista):
         self._marcas: dict[tuple[int, int], int] = {}
         self._fondos: dict[tuple[int, int], str] = {}
         self._fase = 0
-        self._reanudar = False                 # al cerrarlo, ¿seguía sola?
         self._terminada = False
         self._armar(velocidad)
         self._ambiente()
@@ -2655,9 +3797,8 @@ class VentanaPartida(Vista):
     # ---------------------------------------------------------- controles
     def _si_activo(self, senal: str):
         """El atajo solo actúa si el botón correspondiente está activo, y
-        suena como ese botón. Con el submenú abierto, las teclas esperan."""
-        if self._menu is not None:
-            return
+        suena como ese botón. Con el menú abierto también funcionan: la
+        partida sigue detrás."""
         boton = self.botones[senal]
         if str(boton["state"]) == "normal":
             if boton.sonido:
@@ -2681,30 +3822,26 @@ class VentanaPartida(Vista):
         self.app.alternar_menu()
 
     def al_abrir_menu(self):
-        """Al abrir el menú la partida se pausa y el tablero se apaga."""
-        if self.accion is not None:
-            return False
-        self._reanudar = self.modo == "auto" and not self._terminada
-        if self._reanudar:
-            self.senal("pausar")
-        c = self.canvas
-        c.create_rectangle(0, 0, int(c["width"]), int(c["height"]),
-                           fill=NOCHE, stipple="gray50", width=0,
-                           tags="velo")
-        return True
+        """Abrir el menú no pausa la partida: sigue jugándose detrás y el
+        menú se pone al día solo. Para detenerla está «Pausar»."""
+        return self.accion is None
 
     def opciones_del_menu(self):
         ronda = self._estado.ronda if self._estado else 0
         estado = ("terminada" if self._terminada
+                  else "en curso" if self.modo == "auto"
                   else "en pausa" if ronda else "sin empezar")
         activo = {s: str(b["state"]) == "normal"
                   for s, b in self.botones.items()}
         limite = (f" de {self.config.rondas_maximas}"
                   if self.config.rondas_maximas else "")
         return ("Partida", f"Ronda {ronda}{limite}  ·  {estado}", (
-            ("play", "Ver el resultado" if self._terminada else "Continuar",
-             "play", lambda: self.app.cerrar_menu(continuar=True),
-             "primario", True),
+            ("play", "Ver el resultado" if self._terminada
+             else "Volver a la partida", "play",
+             lambda: self.app.cerrar_menu(continuar=True), "primario", True),
+            ("pausa", "Reanudar" if self.modo == "pausa" else "Pausar",
+             "play" if self.modo == "pausa" else "pausa", self._alternar,
+             "secundario", not self._terminada),
             ("reiniciar", "Reiniciar la partida", "reiniciar",
              lambda: self._elegir_del_menu("reiniciar"), "secundario",
              activo["reiniciar"]),
@@ -2718,13 +3855,7 @@ class VentanaPartida(Vista):
              lambda: self._elegir_del_menu("menu"), "fantasma", True)))
 
     def al_cerrar_menu(self, continuar: bool):
-        try:
-            self.canvas.delete("velo")
-        except tk.TclError:
-            pass
-        if continuar and self._reanudar and self.accion is None:
-            self.senal("iniciar")
-        self._reanudar = False
+        """La partida nunca se detuvo: no hay nada que reanudar."""
 
     def _cerrar_menu(self, continuar: bool = False):
         self.app.cerrar_menu(continuar)
@@ -2759,8 +3890,6 @@ class VentanaPartida(Vista):
         self._si_activo("pausar" if self.modo == "auto" else "iniciar")
 
     def _acelerar(self, paso: int):
-        if self._menu is not None:
-            return
         self.velocidad.set(min(10, max(1, self.velocidad.get() + paso)))
         self._nombrar_velocidad()
 
@@ -3161,6 +4290,7 @@ class VentanaPartida(Vista):
             self._reproducir(eventos, estado, factor_animacion(retardo))
         self.dibujar(estado)
         self._estado = estado
+        self.app.refrescar_menu()
         return self._entre_turnos()
 
     def ronda(self, estado, eventos):
@@ -3374,6 +4504,7 @@ class VentanaPartida(Vista):
                    "fin": {"reiniciar", "configurar"}}[modo]
         for senal, boton in self.botones.items():
             self.app.activar(boton, senal in activos)
+        self.app.refrescar_menu()
 
     def _cartel(self, titular: str, detalle: str, estado=None,
                 resultado=None):
@@ -3526,6 +4657,16 @@ AYUDA = [
          "pista con perilla: se arrastra, se pulsa − o +, se gira la "
          "rueda del ratón o se escribe el número. «Valores por omisión» "
          "los devuelve a los del reglamento y el dado elige otra semilla."),
+    ("h", "Programar un tanque"),
+    ("", "«Programar» en la tarjeta de un tanque (o «Editar» en el visor) "
+         "abre el editor del juego. Se escribe una instrucción por línea y "
+         "cada una se revisa al momento: ✓ verde si el tanque la entiende, "
+         "✗ roja si no, con el motivo debajo y en un globo al pasar el "
+         "ratón. A la derecha están las instrucciones disponibles: un clic "
+         "inserta una. «Aleatorio» escribe un programa válido al azar que "
+         "luego se puede modificar. «Guardar» (Ctrl+S) lo guarda en "
+         "tanques/ y se lo asigna al tanque; si quedan errores, avisa "
+         "antes."),
     ("h", "Teclado"),
     ("m", "Enter        iniciar (menú y configuración)"),
     ("m", "F1           esta ayuda (menú)"),
@@ -3535,9 +4676,10 @@ AYUDA = [
     ("m", "R            reiniciar la misma partida"),
     ("m", "Esc          menú ☰ (portada y partida)"),
     ("h", "Menú de la partida"),
-    ("", "El botón ☰ de arriba a la derecha (o Esc) pausa la partida y "
-         "despliega el menú: Continuar "
-         "(sigue como iba), Reiniciar la partida, Volver a los tanques (la "
+    ("", "El botón ☰ de arriba a la derecha (o Esc) despliega el menú sin "
+         "pausar la partida: sigue jugándose detrás y el menú se pone al "
+         "día solo. Tiene Volver a la partida (cierra el menú), Pausar o "
+         "Reanudar, Reiniciar la partida, Volver a los tanques (la "
          "configuración), Terminar la partida aquí (gana el tanque en pie "
          "con más daño infligido, como al llegar al límite de rondas, y se "
          "ve la clasificación) y Menú principal. Abajo está el sonido."),
