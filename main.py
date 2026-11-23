@@ -77,7 +77,8 @@ def comando_config(args) -> int:
     c = _configuracion(args.config)
     print(f"Tablero            {c.tablero.ancho} x {c.tablero.alto}")
     print(f"Semilla            {c.semilla}")
-    print(f"Rondas máximas     {c.rondas_maximas}")
+    print(f"Rondas máximas     "
+          f"{c.rondas_maximas or 'sin límite (hasta el último en pie)'}")
     print(f"Vida inicial       {c.vida_inicial}")
     print(f"Daño               AMT {c.dano.ametralladora:g} · misil "
           f"{c.dano.misil:g} · mina {c.dano.mina:g}")
@@ -107,6 +108,11 @@ def comando_config(args) -> int:
 def comando_jugar(args) -> int:
     """Juega una partida en la consola con los tanques de la configuración."""
     c = _configuracion(args.config)
+    if not args.paso and c.rondas_maximas == cfg.SIN_LIMITE:
+        # En la consola no hay botón para terminar: un tope de seguridad.
+        c = cfg.con_tope(c)
+        print(f"Sin límite de rondas: en la consola se juega hasta "
+              f"{c.rondas_maximas} como máximo (con --paso, sin tope).\n")
     motor, errores = preparar(c, RAIZ, args.semilla)
     if errores:
         print(formato_errores(errores))

@@ -130,9 +130,9 @@ def test_el_color_tiene_valor_por_omision():
 
 # ------------------------------------------------------------ validación
 @pytest.mark.parametrize("datos,aviso", [
-    ({"tablero": {"ancho": 1, "alto": 8}}, "al menos 2"),
+    ({"tablero": {"ancho": 3, "alto": 8}}, "al menos 4 x 4"),
     ({"vida_inicial": 0}, "vida inicial"),
-    ({"rondas_maximas": 0}, "máximo de rondas"),
+    ({"rondas_maximas": -1}, "máximo de rondas"),
     ({"refaccion": {"minimo": 30, "maximo": 10}}, "mínimo de la refacción"),
 ])
 def test_la_validacion_detecta_los_valores_imposibles(datos, aviso):
@@ -158,6 +158,18 @@ def test_no_caben_mas_tanques_que_casillas():
                          for i in range(5)]}
     assert any("más tanques que casillas" in p
                for p in cfg.desde_diccionario(datos).validar())
+
+
+@pytest.mark.parametrize("tanques, lado, valido", [
+    (2, 4, True), (4, 4, True), (5, 4, False), (5, 5, True),
+    (6, 5, False), (6, 6, True)])
+def test_el_tablero_crece_con_los_tanques(tanques, lado, valido):
+    datos = {"tablero": {"ancho": lado, "alto": lado + 3},
+             "tanques": [{"nombre": f"t{i}", "programa": "x.txt"}
+                         for i in range(tanques)]}
+    problemas = cfg.desde_diccionario(datos).validar()
+    assert (not any("al menos" in p for p in problemas)) is valido, problemas
+    assert cfg.lado_minimo(tanques) == max(4, tanques)
 
 
 def test_cargar_un_config_invalido_falla_con_el_detalle(tmp_path):

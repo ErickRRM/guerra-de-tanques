@@ -73,6 +73,8 @@ def ejecutar(motor: Motor, vista: Vista) -> Optional[Resultado]:
     """Juega la partida ronda por ronda y se la va entregando a la vista.
 
     Devuelve el resultado, o None si el usuario salió antes del final.
+    Si la vista pide terminar la partida tal como está, el motor decide el
+    ganador en ese momento.
     """
     seguir = vista.inicio(motor.estado(), motor.eventos_iniciales())
     seguir = seguir is not False
@@ -86,5 +88,7 @@ def ejecutar(motor: Motor, vista: Vista) -> Optional[Resultado]:
                 break
         if seguir:
             seguir = vista.ronda(motor.estado(), eventos)
+    if not motor.terminada() and vista.pide_terminar():
+        motor.terminar_ahora()
     vista.fin(motor.estado(), motor.resultado())
     return motor.resultado()

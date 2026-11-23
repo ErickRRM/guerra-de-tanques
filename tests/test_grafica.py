@@ -356,3 +356,59 @@ def test_el_cartel_final_trae_la_clasificacion(app):
               if c.type(i) == "text"]
     assert any(t.startswith("1.  Tanque 1 · a") for t in textos)
     assert any("destruido" in t for t in textos)
+
+
+@requiere_pantalla
+def test_el_tablero_minimo_crece_con_los_tanques(app):
+    base = replace(cfg.Configuracion(), tablero=cfg.Tablero(4, 4),
+                   tanques=())
+    pantalla = grafica.PantallaConfiguracion(app, base)
+    for i in range(4):
+        pantalla.rutas[i].set("tanques/cazador.txt")
+    assert (pantalla.ancho.get(), pantalla.alto.get()) == ("4", "4")
+    assert "hasta 4 tanques" in pantalla.pista_tablero["text"]
+    pantalla.rutas[4].set("tanques/cazador.txt")      # el quinto
+    assert (pantalla.ancho.get(), pantalla.alto.get()) == ("5", "5")
+    assert "5 × 5 con 5 tanques" in pantalla.pista_tablero["text"]
+    pantalla.ancho.set("4")
+    _, problemas = pantalla.leer()
+    assert any("al menos 5 x 5" in p for p in problemas)
+
+
+@requiere_pantalla
+def test_el_ajuste_respeta_rango_y_paso(app):
+    var = tk.StringVar(app.root, "5")
+    marco = tk.Frame(app.root)
+    ajuste = grafica.Ajuste(marco, app, var, 5, 20, etiqueta="Daño")
+    ajuste.mover(-1)
+    assert var.get() == "5"                     # no baja del mínimo
+    ajuste.mover(3)
+    assert var.get() == "8"
+    ajuste.poner(99)
+    assert var.get() == "20"
+    var.set("abc")                               # escrito a mano, inválido
+    assert ajuste.caja["highlightbackground"] == grafica.ROJO_UI
+    rondas = tk.StringVar(app.root, "15")
+    paso = grafica.Ajuste(marco, app, rondas, 10, 1000, paso=10, pista=False)
+    paso.mover(1)
+    assert rondas.get() == "20"                 # se alinea de 10 en 10
+    paso.mover(-1)
+    assert rondas.get() == "10"
+
+
+@requiere_pantalla
+def test_tablero_cuadrado_y_medidas_rapidas(app):
+    base = replace(cfg.Configuracion(), tablero=cfg.Tablero(8, 8))
+    pantalla = grafica.PantallaConfiguracion(app, base)
+    assert pantalla.cuadrado.get()
+    pantalla.ancho.set("10")
+    assert pantalla.alto.get() == "10"          # el alto sigue al ancho
+    pantalla._alternar_cuadrado()                # se suelta el eslabón
+    pantalla.alto.set("6")
+    assert pantalla.ancho.get() == "10"
+    pantalla.medidas[12].invoke()
+    assert (pantalla.ancho.get(), pantalla.alto.get()) == ("12", "12")
+    for i in range(5):
+        pantalla.rutas[i].set("tanques/cazador.txt")
+    assert pantalla.medidas[4]["state"] == "disabled"   # no caben 5
+    assert pantalla.medidas[6]["state"] == "normal"

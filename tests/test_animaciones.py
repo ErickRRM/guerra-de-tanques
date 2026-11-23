@@ -29,7 +29,8 @@ except tk.TclError:
 pytestmark = pytest.mark.skipif(not HAY_PANTALLA, reason="no hay pantalla")
 
 METODOS = ("rafaga", "misil", "explosion", "humo", "chispas", "deslizar",
-           "embestida", "radar", "anillo", "texto", "mina_nueva")
+           "embestida", "radar", "anillo", "texto", "mina_nueva", "golpe",
+           "escudo", "bloqueo", "curar", "mina_armada")
 
 
 @pytest.fixture
@@ -110,6 +111,10 @@ def test_el_misil_sube_en_arco():
     ("anillo", ((100, 100), "#2E5E8C", 0.2, 0.5)),
     ("texto", ((100, 100), "−10", "#C62828")),
     ("mina_nueva", ((100, 100), (120, 120), 0.45)),
+    ("escudo", ((100, 100),)),
+    ("bloqueo", ((100, 100),)),
+    ("curar", ((100, 100),)),
+    ("mina_armada", ((100, 100),)),
 ])
 def test_cada_efecto_borra_lo_que_dibuja(lienzo, metodo, args):
     cuadros = []
@@ -155,8 +160,8 @@ def test_cada_accion_tiene_su_animacion(app):
     ejecutar(motor, v)
     assert motor.estado().ronda == 4
     assert {"rafaga", "chispas", "texto", "mina_nueva", "misil",
-            "explosion", "humo", "deslizar", "radar",
-            "anillo"} <= set(llamadas)
+            "explosion", "humo", "deslizar", "radar", "escudo",
+            "golpe"} <= set(llamadas)
 
 
 def test_el_choque_y_la_pared(app):
@@ -221,3 +226,70 @@ def test_la_mina_bajo_un_tanque_se_ve(app):
     guion(v, "una", "salir")
     ejecutar(motor, v)
     assert v.canvas.find_withtag("en_3_3")
+
+
+def test_el_retroceso_y_el_temblor_dejan_todo_en_su_lugar(lienzo):
+    lienzo.create_rectangle(40, 40, 60, 60, tags="tanque1")
+    lienzo.create_rectangle(0, 0, 10, 10, tags="casilla")
+    a = Animador(lienzo, 50, lambda ms: True)
+    assert a.rafaga((50, 50), (250, 50), True, etiqueta="tanque1")
+    assert a.misil((50, 50), (250, 250), etiqueta="tanque1")
+    assert a.explosion((100, 100), grande=True)
+    assert a.embestida("tanque1", (50, 50), (100, 50))
+    assert [round(v) for v in lienzo.coords("tanque1")] == [40, 40, 60, 60]
+    assert [round(v) for v in lienzo.coords("casilla")] == [0, 0, 10, 10]
+
+
+def test_el_temblor_se_deshace_aunque_se_corte(lienzo):
+    lienzo.create_rectangle(0, 0, 10, 10, tags="casilla")
+    a = Animador(lienzo, 50, lambda ms: False)
+    assert a.explosion((100, 100), grande=True) is False
+    assert [round(v) for v in lienzo.coords("casilla")] == [0, 0, 10, 10]
+
+
+def test_el_golpe_devuelve_sus_colores(lienzo):
+    pieza = lienzo.create_rectangle(40, 40, 60, 60, fill="#2E5E8C",
+                                    tags="tanque1")
+    Animador(lienzo, 50, lambda ms: True).golpe("tanque1", (50, 50))
+    assert lienzo.itemcget(pieza, "fill") == "#2E5E8C"
+    assert [round(v) for v in lienzo.coords(pieza)] == [40, 40, 60, 60]
+
+
+def test_cada_arma_suena(lienzo):
+    sonidos = []
+    a = Animador(lienzo, 50, lambda ms: True, sonar=sonidos.append)
+    a.rafaga((50, 50), (250, 50), True, blanco=True)
+    a.misil((50, 50), (250, 250))
+    a.explosion((100, 100))
+    a.explosion((100, 100), grande=False)
+    a.embestida("nada", (50, 50), (100, 50))
+    a.radar((50, 50), Direccion.S, 3)
+    a.escudo((50, 50))
+    a.curar((50, 50))
+    assert sonidos == ["ametralladora", "impacto", "misil", "explosion",
+                       "explosion_chica", "motor", "choque", "radar",
+                       "escudo", "reparar"]
+
+
+def test_la_explosion_deja_quemadura(app):
+    motor, v = partida(app, ("a", "MISIL(E)", (1, 1)),
+                       ("b", "ESPERAR", (3, 1)))
+    guion(v, "una", "salir")
+    ejecutar(motor, v)
+    assert (3, 1) in v._marcas
+    assert v.canvas.find_withtag("quemadura")
+
+
+def test_el_sonido_se_controla_desde_el_menu_de_la_partida(app):
+    motor, v = partida(app, ("a", "ESPERAR", (1, 1)),
+                       ("b", "ESPERAR", (3, 1)))
+    app.sonido._reproductor = object()        # como si hubiera bocinas
+    v._abrir_menu()
+    musica = app._interruptores["musica"]
+    efectos = app._interruptores["efectos"]
+    musica.invoke()
+    assert not app.sonido.musica_activa and app.sonido.efectos
+    assert musica.texto == "Apagada" and efectos.texto == "Encendidos"
+    efectos.invoke()
+    assert not app.sonido.efectos and efectos.icono == "mudo"
+    v.senal("salir")

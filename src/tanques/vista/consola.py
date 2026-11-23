@@ -37,7 +37,9 @@ _FLECHAS = {Direccion.N: "^", Direccion.S: "v", Direccion.E: ">",
 _BARRA = 10                     # ancho de la barra de vida
 _MOTIVOS = {Motivo.DESTRUCCION: "último tanque en pie",
             Motivo.DESEMPATE: "límite de rondas; decide el daño infligido",
-            Motivo.EMPATE: "límite de rondas; el daño infligido coincide"}
+            Motivo.EMPATE: "límite de rondas; el daño infligido coincide",
+            Motivo.TERMINADA: "terminada antes de tiempo; decide el daño "
+                              "infligido entre los que siguen en pie"}
 
 
 # ------------------------------------------------------------------ color

@@ -26,7 +26,9 @@ from .base import Vista
 
 _MOTIVOS = {Motivo.DESTRUCCION: "último tanque en pie",
             Motivo.DESEMPATE: "límite de rondas; decide el daño infligido",
-            Motivo.EMPATE: "límite de rondas; el daño infligido coincide"}
+            Motivo.EMPATE: "límite de rondas; el daño infligido coincide",
+            Motivo.TERMINADA: "terminada antes de tiempo; decide el daño "
+                              "infligido entre los que siguen en pie"}
 
 
 def ruta_por_omision(carpeta: str | Path, semilla: int,
@@ -70,7 +72,8 @@ class VistaBitacora(Vista):
         self._linea(f"Fecha          {self.momento:%Y-%m-%d %H:%M:%S}")
         self._linea(f"Semilla        {self.semilla}")
         self._linea(f"Tablero        {estado.ancho} x {estado.alto}")
-        self._linea(f"Rondas máximas {c.rondas_maximas}")
+        self._linea(f"Rondas máximas "
+                    f"{c.rondas_maximas or 'sin límite'}")
         self._linea(f"Vida inicial   {c.vida_inicial}")
         self._linea(f"Daño           AMT {c.dano.ametralladora:g} · misil "
                     f"{c.dano.misil:g} · mina {c.dano.mina:g} · choque "

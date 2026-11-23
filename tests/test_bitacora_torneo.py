@@ -12,7 +12,9 @@ from tanques.vista import Vista, VistaBitacora, VistaConsola, VistaMultiple
 from tanques.vista.bitacora import ruta_por_omision
 
 RAIZ = Path(__file__).resolve().parents[1]
-CONFIG = cfg.cargar(RAIZ / "config.json")
+# config.json viene sin límite de rondas; estas pruebas juegan partidas
+# completas sin nadie que las termine, así que llevan el tope de seguridad.
+CONFIG = cfg.con_tope(cfg.cargar(RAIZ / "config.json"))
 
 
 def partida_con_bitacora(semilla=5, salida=None):

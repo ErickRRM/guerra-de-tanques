@@ -33,12 +33,13 @@ from pathlib import Path
 from tkinter import colorchooser, filedialog, font as tkfont, messagebox
 from typing import Callable, Optional
 
-from ..config import (MAX_TANQUES, RANGOS, Configuracion, Dano, Municion,
-                      Tablero, TanqueConfig)
+from ..config import (MAX_TANQUES, RANGOS, TABLERO_MINIMO, Configuracion,
+                      Dano, Municion, Tablero, TanqueConfig, lado_minimo)
 from ..lenguaje import Interprete, formato_errores
 from ..modelo import Direccion, Motivo, TipoEvento
 from . import sprites
 from .animaciones import AZUL, ROJO, VERDE, Animador
+from .sonido import Sonido
 from .base import Vista
 
 TABLERO_PX = 520                 # lado máximo del tablero en pantalla
@@ -68,7 +69,9 @@ GRIS_NOCHE = GRIS
 TEXTO_NOCHE = TINTA
 _MOTIVOS = {Motivo.DESTRUCCION: "último tanque en pie",
             Motivo.DESEMPATE: "límite de rondas; decide el daño infligido",
-            Motivo.EMPATE: "límite de rondas; el daño infligido coincide"}
+            Motivo.EMPATE: "límite de rondas; el daño infligido coincide",
+            Motivo.TERMINADA: "terminada antes de tiempo; decide el daño "
+                              "infligido"}
 
 
 def activar_dpi():
@@ -265,6 +268,88 @@ def icono(canvas, nombre, cx, cy, s, color, tags=()):
                            width=max(1.5, s / 9), tags=tags)
         canvas.create_oval(cx - k * 0.3, cy - k * 0.3, cx + k * 0.3,
                            cy + k * 0.3, fill=color, width=0, tags=tags)
+    elif nombre == "bala":
+        for dx in (-0.55, 0, 0.55):
+            x = cx + k * dx
+            canvas.create_polygon(x - k * 0.17, cy + k * 0.8, x - k * 0.17,
+                                  cy - k * 0.25, x, cy - k * 0.75,
+                                  x + k * 0.17, cy - k * 0.25, x + k * 0.17,
+                                  cy + k * 0.8, **o)
+    elif nombre == "escudo":
+        puntos = []
+        for a in range(6):
+            r = math.radians(60 * a + 30)
+            puntos += [cx + k * 0.9 * math.cos(r), cy + k * 0.9 * math.sin(r)]
+        canvas.create_polygon(puntos, fill="", outline=color,
+                              width=max(1.5, s / 8), tags=tags)
+        canvas.create_oval(cx - k * 0.25, cy - k * 0.25, cx + k * 0.25,
+                           cy + k * 0.25, **o)
+    elif nombre == "reloj":
+        canvas.create_oval(cx - k * 0.85, cy - k * 0.85, cx + k * 0.85,
+                           cy + k * 0.85, outline=color,
+                           width=max(1.5, s / 9), tags=tags)
+        canvas.create_line(cx, cy - k * 0.55, cx, cy, cx + k * 0.4,
+                           cy + k * 0.2, **linea)
+    elif nombre == "tablero":
+        for d in (-0.85, -0.28, 0.28, 0.85):
+            canvas.create_line(cx + k * d, cy - k * 0.85, cx + k * d,
+                               cy + k * 0.85, fill=color,
+                               width=max(1, s / 12), tags=tags)
+            canvas.create_line(cx - k * 0.85, cy + k * d, cx + k * 0.85,
+                               cy + k * d, fill=color,
+                               width=max(1, s / 12), tags=tags)
+    elif nombre == "enlace":
+        for dx in (-0.35, 0.35):
+            rect_redondeado(canvas, cx + k * dx - k * 0.45, cy - k * 0.3,
+                            cx + k * dx + k * 0.45, cy + k * 0.3, k * 0.28,
+                            outline=color, fill="", width=max(1.5, s / 9),
+                            tags=tags)
+    elif nombre == "nota":
+        r = k * 0.32
+        canvas.create_oval(cx - k * 0.7 - r, cy + k * 0.5 - r * 0.8,
+                           cx - k * 0.7 + r, cy + k * 0.5 + r * 0.8, **o)
+        canvas.create_oval(cx + k * 0.35 - r, cy + k * 0.3 - r * 0.8,
+                           cx + k * 0.35 + r, cy + k * 0.3 + r * 0.8, **o)
+        canvas.create_line(cx - k * 0.4, cy + k * 0.5, cx - k * 0.4,
+                           cy - k * 0.8, cx + k * 0.65, cy - k * 1.0,
+                           cx + k * 0.65, cy + k * 0.3, **linea)
+    elif nombre in ("menos", "mas"):
+        canvas.create_line(cx - k * 0.6, cy, cx + k * 0.6, cy, **linea)
+        if nombre == "mas":
+            canvas.create_line(cx, cy - k * 0.6, cx, cy + k * 0.6, **linea)
+    elif nombre == "menu":
+        for dy in (-0.55, 0, 0.55):
+            canvas.create_line(cx - k * 0.7, cy + k * dy, cx + k * 0.7,
+                               cy + k * dy, **linea)
+    elif nombre == "bandera":
+        canvas.create_line(cx - k * 0.6, cy + k * 0.9, cx - k * 0.6,
+                           cy - k * 0.85, **linea)
+        canvas.create_polygon(cx - k * 0.55, cy - k * 0.85, cx + k * 0.8,
+                              cy - k * 0.45, cx - k * 0.55, cy - k * 0.05,
+                              **o)
+    elif nombre == "casa":
+        canvas.create_polygon(cx, cy - k * 0.9, cx + k * 0.9, cy - k * 0.05,
+                              cx + k * 0.6, cy - k * 0.05, cx + k * 0.6,
+                              cy + k * 0.8, cx - k * 0.6, cy + k * 0.8,
+                              cx - k * 0.6, cy - k * 0.05, cx - k * 0.9,
+                              cy - k * 0.05, **o)
+    elif nombre in ("sonido", "mudo"):
+        canvas.create_polygon(cx - k * 0.85, cy - k * 0.3, cx - k * 0.45,
+                              cy - k * 0.3, cx + k * 0.05, cy - k * 0.75,
+                              cx + k * 0.05, cy + k * 0.75, cx - k * 0.45,
+                              cy + k * 0.3, cx - k * 0.85, cy + k * 0.3, **o)
+        if nombre == "sonido":
+            for r in (0.45, 0.8):
+                canvas.create_arc(cx - k * r + k * 0.1, cy - k * r,
+                                  cx + k * r + k * 0.1, cy + k * r,
+                                  start=-45, extent=90, style="arc",
+                                  outline=color, width=max(1.5, s / 10),
+                                  tags=tags)
+        else:
+            for a, b in ((0.35, 0.95), (0.95, 0.35)):
+                canvas.create_line(cx + k * 0.35, cy - k * (a - 0.65),
+                                   cx + k * 0.95, cy - k * (b - 0.65),
+                                   **linea)
     elif nombre == "cruz":
         canvas.create_rectangle(cx - k * 0.25, cy - k * 0.8, cx + k * 0.25,
                                 cy + k * 0.8, **o)
@@ -301,8 +386,16 @@ class Boton(tk.Canvas):
     def __init__(self, padre, app: "AppGrafica", texto: str,
                  orden: Callable, estilo: str = "secundario",
                  icono_: Optional[str] = None, minimo: int = 0,
-                 alto: int = 36, ayuda: str = ""):
+                 alto: int = 36, ayuda: str = "",
+                 sonido: Optional[str] = "auto"):
         self._listo = False
+        # El sonido del clic sigue a la jerarquía visual: el botón dorado
+        # confirma, regresar o salir baja de tono y el resto hace clic.
+        if sonido == "auto":
+            sonido = ("confirmar" if estilo == "primario"
+                      else "atras" if icono_ in ("atras", "salir")
+                      else "clic")
+        self.sonido = sonido
         self.app, self.texto, self.orden = app, texto, orden
         self.ayuda, self._globo, self._espera = ayuda, None, None
         self.estilo, self.icono = estilo, icono_
@@ -339,10 +432,14 @@ class Boton(tk.Canvas):
     def invoke(self):
         self._ocultar_globo()
         if self.activo():
+            if self.sonido:
+                self.app.sonido.tocar(self.sonido)
             self.orden()
 
     def _sobre(self, encima):
         self._encima = encima
+        if encima and self.activo():
+            self.app.sonido.tocar("hover")
         if not encima:
             self._presionado = False
         self._dibujar()
@@ -381,6 +478,8 @@ class Boton(tk.Canvas):
         if self.activo():
             self._presionado = True
             self._dibujar()
+        else:
+            self.app.sonido.tocar("apagado")
 
     def _soltar(self, e):
         dentro = 0 <= e.x <= self.winfo_width() and \
@@ -520,14 +619,18 @@ class Segmentos(tk.Canvas):
     una función `command` que se llama al cambiar.
     """
 
-    def __init__(self, padre, app, valor=5, command=None, n=10):
+    def __init__(self, padre, app, valor=5, command=None, n=10, minimo=1,
+                 barra=16, alto=26):
         self.app, self.n, self.command = app, n, command
+        self.minimo = minimo
         self._valor = valor
-        super().__init__(padre, width=app.px(16) * n, height=app.px(26),
+        super().__init__(padre, width=app.px(barra) * n, height=app.px(alto),
                          bg=_fondo_de(padre), highlightthickness=0,
                          cursor="hand2")
         self.bind("<Button-1>", self._clic)
         self.bind("<B1-Motion>", self._clic)
+        self.bind("<MouseWheel>", lambda e: self._cambiar(
+            self._valor + (1 if e.delta > 0 else -1)))
         self.bind("<Configure>", lambda _e: self._dibujar())
         self._dibujar()
 
@@ -535,14 +638,23 @@ class Segmentos(tk.Canvas):
         return self._valor
 
     def set(self, valor):
-        self._valor = min(self.n, max(1, int(round(float(valor)))))
+        self._valor = min(self.n, max(self.minimo, int(round(float(valor)))))
         self._dibujar()
 
     def _clic(self, e):
-        paso = self.winfo_width() / self.n
+        paso = max(self.winfo_width(), int(self["width"])) / self.n
         nuevo = min(self.n, max(1, int(e.x // paso) + 1))
+        # Con mínimo 0, un clic en la primera barra encendida la apaga.
+        if self.minimo == 0 and nuevo == 1 and self._valor == 1 \
+                and e.type == tk.EventType.ButtonPress:
+            nuevo = 0
+        self._cambiar(nuevo)
+
+    def _cambiar(self, nuevo):
+        nuevo = min(self.n, max(self.minimo, nuevo))
         if nuevo != self._valor:
             self.set(nuevo)
+            self.app.sonido.tocar("tic")
             if self.command:
                 self.command(nuevo)
 
@@ -561,6 +673,288 @@ class Segmentos(tk.Canvas):
             rect_redondeado(self, k * paso + px(2), h - alto,
                             (k + 1) * paso - px(2), h, px(2), fill=color,
                             outline="")
+
+
+class Ajuste(tk.Frame):
+    """Un valor numérico con su rango, a la vista y a la mano.
+
+    Arriba: el ícono del color del ajuste, el nombre, el rango y el valor
+    en una caja que se puede escribir. Abajo: −, una pista que se llena
+    con una perilla que se arrastra, y +. La rueda del ratón también lo
+    mueve. Si lo escrito no es un número del rango, la caja se pone roja.
+    Con `pista=False` queda compacto: − valor +.
+    """
+
+    def __init__(self, padre, app: "AppGrafica", variable: tk.StringVar,
+                 minimo: int, maximo: int, etiqueta: str = "",
+                 color: str = ACENTO, simbolo: Optional[str] = None,
+                 paso: int = 1, pista: bool = True, nota: str = "",
+                 ancho: int = 200):
+        fondo = _fondo_de(padre)
+        super().__init__(padre, bg=fondo)
+        self.app, self.var = app, variable
+        self.minimo, self.maximo, self.paso = minimo, maximo, paso
+        self.color = color
+        px = app.px
+        self.caja = tk.Entry(
+            self, textvariable=variable, width=4, justify="center",
+            font=app.f_boton, relief="flat", bd=0, bg=PANEL_ALTO,
+            fg=color if pista else TINTA, highlightthickness=1,
+            highlightbackground=BORDE, highlightcolor=color,
+            insertbackground=color, selectbackground=color,
+            selectforeground=TINTA_ACENTO)
+        self.texto_rango: Optional[tk.Label] = None
+        self.pista: Optional[tk.Canvas] = None
+        if pista:
+            # Cabeza: ícono y nombre a la izquierda, el valor a la derecha
+            cabeza = tk.Frame(self, bg=fondo)
+            cabeza.pack(fill="x")
+            if simbolo:
+                dibujo = tk.Canvas(cabeza, width=px(18), height=px(18),
+                                   bg=fondo, highlightthickness=0)
+                icono(dibujo, simbolo, px(9), px(9), px(14), color)
+                dibujo.pack(side="left", padx=(0, px(6)))
+            tk.Label(cabeza, text=etiqueta, font=app.f_boton, fg=TINTA,
+                     bg=fondo).pack(side="left")
+            self.texto_rango = tk.Label(cabeza, text="", font=app.f_chico,
+                                        fg=GRIS_CLARO, bg=fondo)
+            self.texto_rango.pack(side="left", padx=(px(6), 0))
+            self.caja.lift(cabeza)
+            self.caja.pack(in_=cabeza, side="right", ipady=px(2))
+        fila = tk.Frame(self, bg=fondo)
+        fila.pack(fill="x", pady=(px(3) if pista else 0, 0))
+        boton = 26 if pista else 28
+        app.boton(fila, "", lambda: self.mover(-1), icono="menos",
+                  estilo="fantasma", alto=boton, ancho=boton, sonido=None
+                  ).pack(side="left")
+        mas = app.boton(fila, "", lambda: self.mover(1), icono="mas",
+                        estilo="fantasma", alto=boton, ancho=boton,
+                        sonido=None)
+        if pista:
+            # El + se acomoda antes que la pista: si falta espacio, cede la
+            # pista y no el botón.
+            mas.pack(side="right")
+            self.pista = tk.Canvas(fila, height=px(24), width=px(60),
+                                   bg=fondo, highlightthickness=0,
+                                   cursor="hand2")
+            self.pista.pack(side="left", fill="x", expand=True,
+                            padx=px(4))
+            self.pista.bind("<Button-1>", self._clic)
+            self.pista.bind("<B1-Motion>", self._clic)
+            self.pista.bind("<Configure>", lambda _e: self._dibujar())
+        else:
+            self.caja.lift(fila)
+            self.caja.pack(in_=fila, side="left", padx=px(4), ipady=px(3))
+            mas.pack(side="left")
+        for w in (self.caja, self.pista):
+            if w is not None:
+                w.bind("<MouseWheel>", lambda e: self.mover(
+                    1 if e.delta > 0 else -1))
+        # Pie: qué significa el valor
+        self.nota = tk.Label(self, text=nota, font=app.f_chico, fg=GRIS,
+                             bg=fondo, anchor="w", justify="left")
+        if pista:
+            self.nota.pack(fill="x", padx=(px(2), 0))
+            # El texto se acomoda al ancho que le dé la columna
+            self.nota.bind("<Configure>", lambda e: self.nota.configure(
+                wraplength=max(1, e.width)))
+        variable.trace_add("write", lambda *_a: self._dibujar())
+        self.rango(minimo, maximo)
+
+    # --------------------------------------------------------- valor
+    def valor(self) -> Optional[int]:
+        try:
+            return int(self.var.get().strip())
+        except ValueError:
+            return None
+
+    def poner(self, valor: float):
+        """Lleva el valor al paso y al rango más cercanos."""
+        if self.paso > 1:
+            valor = round(valor / self.paso) * self.paso
+        nuevo = int(min(self.maximo, max(self.minimo, round(valor))))
+        if str(nuevo) != self.var.get().strip():
+            self.var.set(str(nuevo))
+            self.app.sonido.tocar("tic")
+
+    def mover(self, pasos: int):
+        actual = self.valor()
+        if actual is None:
+            actual = self.minimo
+        if self.paso > 1 and actual % self.paso:
+            # fuera del paso (p. ej. 15 de 10 en 10): primero se alinea
+            abajo = actual // self.paso * self.paso
+            self.poner(abajo + (self.paso if pasos > 0 else 0))
+            return
+        self.poner(actual + pasos * self.paso)
+
+    def rango(self, minimo: int, maximo: Optional[int] = None):
+        """Cambia el rango (el tablero mínimo crece con el escuadrón)."""
+        self.minimo = minimo
+        if maximo is not None:
+            self.maximo = maximo
+        if self.texto_rango is not None:
+            self.texto_rango.configure(
+                text=f"{self.minimo}–{self.maximo}")
+        self._dibujar()
+
+    # --------------------------------------------------------- dibujo
+    def _clic(self, e):
+        px = self.app.px
+        w = max(self.pista.winfo_width(), int(self.pista["width"]))
+        x0, x1 = px(9), w - px(9)
+        t = min(1.0, max(0.0, (e.x - x0) / max(1, x1 - x0)))
+        self.poner(self.minimo + t * (self.maximo - self.minimo))
+
+    def _dibujar(self):
+        v = self.valor()
+        valido = v is not None and self.minimo <= v <= self.maximo
+        try:
+            self.caja.configure(highlightbackground=BORDE if valido
+                                else ROJO_UI)
+        except tk.TclError:
+            return
+        c = self.pista
+        if c is None:
+            return
+        px = self.app.px
+        c.delete("all")
+        w = max(c.winfo_width(), int(c["width"]))
+        h = int(c["height"])
+        x0, x1, y = px(9), w - px(9), h / 2
+        pildora(c, x0, y - px(3), x1, y + px(3), PANEL_ALTO)
+        pasos = (self.maximo - self.minimo) // self.paso
+        if 0 < pasos <= 20:                       # marcas de cada valor
+            for k in range(pasos + 1):
+                x = x0 + (x1 - x0) * k / pasos
+                c.create_line(x, y + px(6), x, y + px(9), fill=BORDE)
+        if v is None:
+            return
+        t = min(1.0, max(0.0, (v - self.minimo)
+                         / max(1, self.maximo - self.minimo)))
+        xf = x0 + (x1 - x0) * t
+        if xf > x0 + px(6):
+            pildora(c, x0, y - px(3), xf, y + px(3),
+                    sprites.mezclar(self.color, PANEL, 0.25))
+        r = px(7)
+        c.create_oval(xf - r - px(2), y - r - px(2), xf + r + px(2),
+                      y + r + px(2), fill=sprites.mezclar(self.color, PANEL,
+                                                          0.7), outline="")
+        c.create_oval(xf - r, y - r, xf + r, y + r, fill=self.color,
+                      outline=sprites.mezclar(self.color, "#FFFFFF", 0.45),
+                      width=1.5)
+
+
+class VistaTablero(tk.Canvas):
+    """Miniatura del tablero con el tamaño elegido, para verlo antes de
+    jugar: el damero, las esquinas doradas y la medida."""
+
+    def __init__(self, padre, app: "AppGrafica", lado: int = 108):
+        self.app = app
+        super().__init__(padre, width=app.px(lado), height=app.px(lado + 18),
+                         bg=_fondo_de(padre), highlightthickness=0)
+        self.lado = app.px(lado)
+
+    def dibujar(self, ancho: Optional[int], alto: Optional[int],
+                minimo: int):
+        self.delete("all")
+        px = self.app.px
+        if not ancho or not alto or ancho < 1 or alto < 1:
+            self.create_text(self.lado / 2, self.lado / 2, text="?",
+                             font=self.app.f_grande, fill=ROJO_UI)
+            return
+        caja = self.lado - px(10)
+        celda = caja / max(ancho, alto)
+        w, h = celda * ancho, celda * alto
+        x0 = (self.lado - w) / 2
+        y0 = (self.lado - h) / 2
+        valido = ancho >= minimo and alto >= minimo
+        for y in range(alto):
+            for x in range(ancho):
+                color = sprites.mezclar(
+                    sprites.FONDO if (x + y) % 2 == 0
+                    else sprites.CASILLA_ALTERNA, sprites.LUZ, 0.6)
+                self.create_rectangle(x0 + x * celda, y0 + y * celda,
+                                      x0 + (x + 1) * celda,
+                                      y0 + (y + 1) * celda, fill=color,
+                                      outline=sprites.MARCA
+                                      if celda > 5 else "")
+        borde = ACENTO if valido else ROJO_UI
+        largo, g = px(10), px(3)
+        for cx, cy, dx, dy in ((x0, y0, 1, 1), (x0 + w, y0, -1, 1),
+                               (x0, y0 + h, 1, -1), (x0 + w, y0 + h, -1, -1)):
+            ex, ey = cx - dx * g, cy - dy * g
+            self.create_line(ex, ey + dy * largo, ex, ey, ex + dx * largo,
+                             ey, fill=borde, width=px(2))
+        self.create_text(self.lado / 2, self.lado + px(8),
+                         text=f"{ancho} × {alto}  ·  {ancho * alto} casillas",
+                         font=self.app.f_chico,
+                         fill=GRIS if valido else ROJO_UI)
+
+
+class ControlMusica(tk.Frame):
+    """Volumen de la música: nota, −, diez barras y +.
+
+    Todos los controles de la aplicación muestran el mismo volumen: cambiar
+    uno actualiza los demás.
+    """
+
+    def __init__(self, padre, app: "AppGrafica", fondo: Optional[str] = None):
+        fondo = fondo or _fondo_de(padre)
+        super().__init__(padre, bg=fondo)
+        self.app = app
+        px = app.px
+        nota = tk.Canvas(self, width=px(20), height=px(26), bg=fondo,
+                         highlightthickness=0)
+        icono(nota, "nota", px(10), px(13), px(14), ACENTO)
+        nota.pack(side="left", padx=(0, px(4)))
+        app.boton(self, "", lambda: self._paso(-1), icono="menos",
+                  estilo="fantasma", alto=30, ancho=30, sonido=None,
+                  ayuda="Bajar la música").pack(side="left")
+        self.barras = Segmentos(self, app, valor=app.sonido.volumen_musica,
+                                command=app.cambiar_volumen_musica,
+                                minimo=0, barra=9, alto=22)
+        self.barras.pack(side="left", padx=px(6))
+        app.boton(self, "", lambda: self._paso(1), icono="mas",
+                  estilo="fantasma", alto=30, ancho=30, sonido=None,
+                  ayuda="Subir la música").pack(side="left")
+        self.cifra = tk.Label(self, text="", font=app.f_boton, fg=ACENTO,
+                              bg=fondo, width=3, anchor="e")
+        self.cifra.pack(side="left")
+        app._controles_musica = [c for c in app._controles_musica
+                                 if c.winfo_exists()] + [self]
+        self.refrescar()
+
+    def _paso(self, d: int):
+        self.app.sonido.tocar("tic")
+        self.app.cambiar_volumen_musica(self.app.sonido.volumen_musica + d)
+
+    def refrescar(self):
+        v = self.app.sonido.volumen_musica
+        self.barras.set(v)
+        self.cifra.configure(text=str(v) if v else "—")
+
+
+class _Interruptor:
+    """Un «botón» sin dibujo: guarda si una acción está disponible.
+
+    Volver a la configuración ya no tiene botón propio (vive en el menú de
+    arriba a la derecha), pero el menú y las teclas siguen preguntando si
+    está activa, igual que con un botón.
+    """
+
+    def __init__(self, sonido: Optional[str] = "clic"):
+        self._estado = "normal"
+        self.sonido = sonido
+
+    def configure(self, cnf=None, **kw):
+        if "state" in kw:
+            self._estado = kw["state"]
+
+    config = configure
+
+    def __getitem__(self, clave):
+        return self._estado
 
 
 class _Rotulo:
@@ -988,6 +1382,13 @@ class AppGrafica:
         self._pantalla: Optional[tk.Frame] = None
         self._partida: Optional["VentanaPartida"] = None
         self._portada: dict = {}
+        self.sonido = Sonido()
+        self._intro_tocada = False
+        self._controles_musica: list = []
+        self._desplegable: Optional[Panel] = None
+        self._proveedor = None
+        self._interruptores: dict[str, Boton] = {}
+        self.opciones_menu: dict[str, Boton] = {}
         self._fuentes()
 
     # ---------------------------------------------------------- utilidades
@@ -1022,7 +1423,8 @@ class AppGrafica:
 
     def boton(self, padre, texto, orden, ancho=0, primario=False,
               estilo: Optional[str] = None, icono: Optional[str] = None,
-              alto: int = 36, ayuda: str = "") -> Boton:
+              alto: int = 36, ayuda: str = "",
+              sonido: Optional[str] = "auto") -> Boton:
         """Botón de la aplicación; `ancho` es el mínimo en píxeles a 96 ppp.
 
         No toma el foco: así la barra espaciadora es siempre el atajo de
@@ -1030,14 +1432,179 @@ class AppGrafica:
         """
         return Boton(padre, self, texto, orden,
                      estilo or ("primario" if primario else "secundario"),
-                     icono, minimo=ancho, alto=alto, ayuda=ayuda)
+                     icono, minimo=ancho, alto=alto, ayuda=ayuda,
+                     sonido=sonido)
+
+    # ---------------------------------------------------------- sonido
+    def _pintar_interruptores(self):
+        """Los interruptores del menú muestran lo que está encendido."""
+        musica = self._interruptores.get("musica")
+        efectos = self._interruptores.get("efectos")
+        try:
+            if musica is not None:
+                musica.texto = ("Encendida" if self.sonido.musica_activa
+                                else "Apagada")
+                musica.icono = "nota" if self.sonido.musica_activa else "mudo"
+                musica._dibujar()
+            if efectos is not None:
+                efectos.texto = ("Encendidos" if self.sonido.efectos
+                                 else "Apagados")
+                efectos.icono = "sonido" if self.sonido.efectos else "mudo"
+                efectos._dibujar()
+        except tk.TclError:
+            pass
+
+    def alternar_musica(self):
+        """Música sí / no, sin tocar los efectos."""
+        if not self.sonido.disponible:
+            return
+        self.sonido.alternar_musica()
+        self.sonido.tocar("clic")
+        self._pintar_interruptores()
+
+    def alternar_efectos(self):
+        """Efectos sí / no (disparos, botones…), sin tocar la música."""
+        if not self.sonido.disponible:
+            return
+        if self.sonido.alternar_efectos():
+            self.sonido.tocar("clic")
+        self._pintar_interruptores()
+
+    # ---------------------------------------------------------- menú ☰
+    def poner_menu(self, proveedor):
+        """La pantalla agrega sus opciones al menú de arriba a la derecha.
+
+        `proveedor` tiene `opciones_del_menu()` → (título, subtítulo,
+        [(clave, texto, ícono, orden, estilo, activo)]), `al_abrir_menu()`
+        (False lo impide) y `al_cerrar_menu(continuar)`.
+        """
+        self._proveedor = proveedor
+
+    def alternar_menu(self):
+        if self._desplegable is not None:
+            self.cerrar_menu(continuar=True)
+        else:
+            self.abrir_menu()
+
+    def abrir_menu(self):
+        """Despliega el menú bajo el botón ☰: las opciones de la pantalla
+        (en la partida: continuar, reiniciar, volver a los tanques,
+        terminar, menú principal) y el sonido, música y efectos por
+        separado."""
+        if self._desplegable is not None or self._pantalla is None:
+            return
+        prov = self._proveedor
+        if prov is not None and prov.al_abrir_menu() is False:
+            return
+        px = self.px
+        menu = Panel(self._pantalla, self, modo="ajustar", relleno=16,
+                     acento=ACENTO)
+        cuerpo = menu.cuerpo
+        self.opciones_menu = {}
+        if prov is not None:
+            titulo, subtitulo, opciones = prov.opciones_del_menu()
+            self.rotulo(cuerpo, titulo).pack(anchor="w")
+            tk.Label(cuerpo, text=subtitulo, font=self.f_chico, fg=GRIS,
+                     bg=PANEL, anchor="w").pack(fill="x",
+                                                pady=(px(2), px(10)))
+            for clave, texto, simbolo, orden, estilo, activo in opciones:
+                b = self.boton(cuerpo, texto, orden, ancho=290, alto=38,
+                               icono=simbolo, estilo=estilo,
+                               sonido="atras" if simbolo == "casa"
+                               else "auto")
+                b.pack(fill="x", pady=px(3))
+                if not activo:
+                    self.activar(b, False)
+                self.opciones_menu[clave] = b
+            tk.Frame(cuerpo, bg=BORDE, height=1).pack(
+                fill="x", pady=(px(12), px(10)))
+        self.rotulo(cuerpo, "Sonido", color=CIAN).pack(anchor="w")
+        rejilla = tk.Frame(cuerpo, bg=PANEL)
+        rejilla.pack(fill="x", pady=(px(6), 0))
+        rejilla.columnconfigure(1, weight=1)
+        self._interruptores = {}
+        for fila, (clave, texto, orden) in enumerate((
+                ("musica", "Música", self.alternar_musica),
+                ("efectos", "Efectos", self.alternar_efectos))):
+            tk.Label(rejilla, text=texto, font=self.f_texto, fg=TINTA,
+                     bg=PANEL, anchor="w").grid(row=2 * fila, column=0,
+                                                sticky="w", pady=px(3))
+            b = self.boton(rejilla, "Encendidos", orden, ancho=140, alto=32,
+                           icono="sonido", estilo="secundario", sonido=None)
+            b.grid(row=2 * fila, column=1, sticky="e", pady=px(3))
+            if not self.sonido.disponible:
+                self.activar(b, False)
+            self._interruptores[clave] = b
+            if clave == "musica":
+                ControlMusica(rejilla, self).grid(
+                    row=1, column=0, columnspan=2, sticky="e",
+                    pady=(0, px(6)))
+        self._pintar_interruptores()
+        tk.Label(cuerpo, text="Esc cerrar", font=self.f_chico,
+                 fg=GRIS_CLARO, bg=PANEL).pack(pady=(px(10), 0))
+        menu.place(relx=1, x=-px(14), y=px(54), anchor="ne")
+        tk.Misc.tkraise(menu)              # Panel es Canvas: su lift() es otro
+        self._desplegable = menu
+
+    def cerrar_menu(self, continuar: bool = False):
+        if self._desplegable is None:
+            return
+        try:
+            self._desplegable.destroy()
+        except tk.TclError:
+            pass
+        self._desplegable = None
+        self._interruptores = {}
+        if self._proveedor is not None:
+            self._proveedor.al_cerrar_menu(continuar)
+
+    def _intro(self, intentos=40):
+        """El sonido de arranque, en cuanto los WAV estén listos; luego
+        entra la música, que ya no se detiene al cambiar de pantalla."""
+        if self._intro_tocada or not self.sonido.disponible:
+            return
+        if not self.sonido.listo:
+            if intentos:
+                self.root.after(100, lambda: self._intro(intentos - 1))
+            return
+        self._intro_tocada = True
+        self.sonido.tocar("intro")
+        self.root.after(1600, self._arrancar_musica)
+
+    def _arrancar_musica(self, intentos=75):
+        """La canción se sintetiza después de los efectos: se espera."""
+        if self.sonido.hay_musica:
+            self.sonido.musica()
+        elif intentos and self.sonido.disponible:
+            self.root.after(200, lambda: self._arrancar_musica(intentos - 1))
+
+    def cambiar_volumen_musica(self, volumen: int):
+        """Sube o baja la música (0 a 10). Subirla con la música apagada
+        la enciende; los efectos no cambian."""
+        if volumen > 0 and not self.sonido.musica_activa:
+            self.sonido.alternar_musica()
+        self.sonido.cambiar_volumen_musica(volumen)
+        self._pintar_interruptores()
+        for c in self._controles_musica:
+            try:
+                c.refrescar()
+            except tk.TclError:
+                pass
 
     def activar(self, boton, activo: bool):
         boton.configure(state="normal" if activo else "disabled")
 
-    def atajo(self, secuencia: str, orden):
-        """Tecla de la pantalla actual; se olvida al cambiar de pantalla."""
-        self.root.bind(secuencia, lambda _e: (orden(), "break")[1])
+    def atajo(self, secuencia: str, orden, sonido: Optional[str] = "clic"):
+        """Tecla de la pantalla actual; se olvida al cambiar de pantalla.
+
+        Suena como el botón que reemplaza.
+        """
+        def accion(_e):
+            if sonido:
+                self.sonido.tocar(sonido)
+            orden()
+            return "break"
+        self.root.bind(secuencia, accion)
         self._atajos.append(secuencia)
 
     def rotulo(self, padre, texto, color=ACENTO, fondo=None):
@@ -1057,6 +1624,11 @@ class AppGrafica:
         return e
 
     def _nueva_pantalla(self, titulo: str, encabezado=True) -> tk.Frame:
+        self._portada = {}
+        self._desplegable = None
+        self._proveedor = None
+        self._interruptores = {}
+        self.opciones_menu = {}
         for secuencia in self._atajos:
             self.root.unbind(secuencia)
         self._atajos = []
@@ -1089,10 +1661,26 @@ class AppGrafica:
                                   fill=sprites.mezclar(ACENTO, FONDO_BARRA,
                                                        k / 40))
             barra.tag_lower("fondo")
-            barra.coords(sub, e.width - px(20), px(29))
+            barra.coords(sub, e.width - px(66), px(29))
 
         barra.bind("<Configure>", redibujar)
+        # El menú ☰, siempre arriba a la derecha (encima del encabezado o
+        # de la portada); se sube cuando la pantalla ya tiene su contenido.
+        boton = self.boton(self._pantalla, "", self.alternar_menu,
+                           icono="menu", estilo="fantasma", alto=38,
+                           ancho=38, ayuda="Menú  (Esc)")
+        boton.configure(bg=FONDO_BARRA if encabezado else "#0B1626")
+        boton.place(relx=1, x=-px(14), y=px(10), anchor="ne")
+        self.boton_menu = boton
+        self.root.after_idle(lambda: self._subir(boton))
         return self._pantalla
+
+    @staticmethod
+    def _subir(widget):
+        try:
+            tk.Misc.tkraise(widget)
+        except tk.TclError:
+            pass
 
     def _esperar(self) -> str:
         """Atiende eventos hasta que el usuario elige algo."""
@@ -1112,7 +1700,13 @@ class AppGrafica:
         self._eleccion.set("salir")
 
     def destruir(self):
+        self.sonido.cerrar()
         try:
+            # Los temporizadores pendientes (animación de la portada, luces
+            # del tablero…) se cancelan: si no, Tk los corre ya sin ventana.
+            for tarea in self.root.tk.splitlist(
+                    self.root.tk.call("after", "info")):
+                self.root.after_cancel(tarea)
             self.root.destroy()
         except tk.TclError:
             pass
@@ -1137,9 +1731,11 @@ class AppGrafica:
                          "angulo": 0, "listo": False}
         lienzo.bind("<Configure>", lambda e: self._dibujar_portada(
             e.width, e.height))
-        self.atajo("<Return>", lambda: self._elegir("iniciar"))
+        self.atajo("<Return>", lambda: self._elegir("iniciar"), "confirmar")
         self.atajo("<F1>", lambda: self._elegir("ayuda"))
+        self.atajo("<Escape>", self.alternar_menu)
         self.root.after(40, self._animar_portada)
+        self._intro()
         return self._esperar()
 
     def _dibujar_portada(self, w, h):
@@ -1199,8 +1795,10 @@ class AppGrafica:
             b.configure(bg=fondo)
             c.create_window(w / 2, y, window=b)
             y += px(56)
-        c.create_text(w / 2, y - px(8), text="Enter  iniciar   ·   F1  ayuda",
+        c.create_text(w / 2, y - px(8),
+                      text="Enter  iniciar   ·   F1  ayuda   ·   ☰ / Esc  menú",
                       font=self.f_chico, fill=GRIS_CLARO)
+
 
         # Desfile de tanques sobre el piso: tres carriles, dos sentidos.
         est["tanques"] = []
@@ -1231,6 +1829,8 @@ class AppGrafica:
             return
         if est.get("listo"):
             est["angulo"] = (est["angulo"] - 3) % 360
+            if est["angulo"] == 90:          # el barrido pasa por arriba
+                self.sonido.tocar("barrido")
             for k in range(3):
                 c.itemconfigure(f"barrido{k}", start=est["angulo"] + k * 14)
             w = est["w"]
@@ -1357,14 +1957,14 @@ class PantallaConfiguracion:
         for i in range(MAX_TANQUES):
             self._ranura(rejilla, i, config)
 
-        # --- reglas, en dos paneles
+        # --- reglas: el campo de batalla y el arsenal
         grupos = tk.Frame(cuerpo, bg=FONDO_VENTANA)
         grupos.pack(fill="x", pady=(px(12), 0))
-        partida = self._grupo(grupos, "Partida", "ajustar")
-        partida.master.master.pack(side="left", anchor="n",
-                                   padx=(0, px(10)))
+        campo = self._grupo(grupos, "Campo de batalla", "ajustar")
+        campo.master.master.pack(side="left", anchor="n", fill="y",
+                                 padx=(0, px(10)))
         armas = self._grupo(grupos, "Arsenal y defensa", "x")
-        armas.master.master.pack(side="left", fill="x", expand=True,
+        armas.master.master.pack(side="left", fill="both", expand=True,
                                  anchor="n")
 
         def var(valor):
@@ -1381,39 +1981,117 @@ class PantallaConfiguracion:
         self.escudo = var(config.escudo_puntos)
         self.armado = var(config.mina_rondas_armado)
 
-        self._campo(partida, 0, 0, "Tablero (ancho × alto)",
-                    (self.ancho, 2, 30), (self.alto, 2, 30))
-        caja = self._campo(partida, 1, 0, "Semilla", (self.semilla, None))
-        app.boton(caja, "", self._sortear, icono="dado", alto=30).pack(
-            side="left", padx=(px(6), 0))
-        self._campo(partida, 2, 0, "Rondas máximas",
-                    (self.rondas, 1, 5000, 10))
+        # Tablero: la miniatura a la izquierda; ancho, alto, «cuadrado» y
+        # medidas rápidas a la derecha.
+        self.vista_tablero = VistaTablero(campo, app)
+        self.vista_tablero.grid(row=0, column=0, rowspan=4, sticky="nw",
+                                padx=(0, px(14)))
+        self.lados = {}
+        medidas = tk.Frame(campo, bg=PANEL)
+        medidas.grid(row=0, column=1, sticky="w")
+        for k, (nombre, variable) in enumerate((("Ancho", self.ancho),
+                                                ("Alto", self.alto))):
+            caja = tk.Frame(medidas, bg=PANEL)
+            caja.pack(side="left", padx=(0 if k == 0 else px(10), 0))
+            tk.Label(caja, text=nombre, font=app.f_chico, fg=GRIS,
+                     bg=PANEL).pack(anchor="w")
+            ajuste = Ajuste(caja, app, variable, TABLERO_MINIMO, 30,
+                            pista=False)
+            ajuste.pack(anchor="w")
+            self.lados[nombre] = ajuste
+        self.cuadrado = tk.BooleanVar(app.root, self.ancho.get()
+                                      == self.alto.get())
+        # El eslabón entre ancho y alto: encendido, el tablero es cuadrado
+        self.boton_cuadrado = app.boton(
+            medidas, "", self._alternar_cuadrado, icono="enlace", alto=28,
+            ancho=28, ayuda="Cuadrado: ancho y alto iguales")
+        self.boton_cuadrado.pack(side="left", anchor="s",
+                                 padx=(px(10), 0))
+        rapidas = tk.Frame(campo, bg=PANEL)
+        rapidas.grid(row=1, column=1, sticky="w", pady=(px(8), 0))
+        self.medidas = {}
+        for lado in (4, 6, 8, 10, 12):
+            b = app.boton(rapidas, f"{lado}", lambda n=lado: self._medida(n),
+                          estilo="fantasma", alto=26, ancho=28,
+                          ayuda=f"Tablero de {lado} × {lado}")
+            b.pack(side="left", padx=(0, px(3)))
+            self.medidas[lado] = b
+        self.pista_tablero = tk.Label(campo, text="", font=app.f_chico,
+                                      fg=GRIS_CLARO, bg=PANEL, anchor="w")
+        self.pista_tablero.grid(row=2, column=1, sticky="w",
+                                pady=(px(4), 0))
+        # Rondas y semilla
+        abajo = tk.Frame(campo, bg=PANEL)
+        abajo.grid(row=3, column=1, sticky="w", pady=(px(8), 0))
+        izquierda = tk.Frame(abajo, bg=PANEL)
+        izquierda.pack(side="left", anchor="n")
+        tk.Label(izquierda, text="Límite de rondas", font=app.f_chico,
+                 fg=GRIS, bg=PANEL).pack(anchor="w")
+        # Por omisión no hay límite: se juega hasta el último en pie, y en
+        # la partida «Terminar la partida aquí» la corta cuando se quiera.
+        linea_rondas = tk.Frame(izquierda, bg=PANEL)
+        linea_rondas.pack(anchor="w")
+        self.sin_limite = tk.BooleanVar(app.root,
+                                        config.rondas_maximas == 0)
+        self._rondas_guardadas = str(config.rondas_maximas or 200)
+        self.boton_limite = app.boton(
+            linea_rondas, "∞", self._alternar_limite, alto=28, ancho=34,
+            ayuda="Sin límite: hasta el último tanque en pie")
+        self.boton_limite.pack(side="left", padx=(0, px(6)))
+        self.contador_rondas = Ajuste(linea_rondas, app, self.rondas, 10,
+                                      1000, paso=10, pista=False)
+        self.texto_sin_limite = tk.Label(
+            linea_rondas, text="hasta el último en pie", font=app.f_chico,
+            fg=ACENTO, bg=PANEL)
+        self._pintar_limite()
+        derecha = tk.Frame(abajo, bg=PANEL)
+        derecha.pack(side="left", anchor="n", padx=(px(14), 0))
+        tk.Label(derecha, text="Semilla", font=app.f_chico, fg=GRIS,
+                 bg=PANEL).pack(anchor="w")
+        linea = tk.Frame(derecha, bg=PANEL)
+        linea.pack(anchor="w")
+        semilla = app.campo_texto(linea, self.semilla, ancho=7)
+        semilla.configure(justify="center", font=app.f_boton)
+        semilla.pack(side="left", ipady=px(4))
+        app.boton(linea, "", self._sortear, icono="dado", alto=30,
+                  ayuda="Otra semilla al azar").pack(side="left",
+                                                     padx=(px(6), 0))
+        self.ancho.trace_add("write", lambda *_a: self._cambio_lado(
+            self.ancho, self.alto))
+        self.alto.trace_add("write", lambda *_a: self._cambio_lado(
+            self.alto, self.ancho))
+        self._ajustar_lado()
 
-        for k, (etiqueta, variable, clave) in enumerate((
-                ("Daño AMT", self.amt, "ametralladora"),
-                ("Misiles", self.misiles, "misiles"),
-                ("Minas", self.minas, "minas"),
-                ("REPARAR cura", self.reparar, "reparar"),
-                ("Escudo absorbe", self.escudo, "escudo"),
-                ("Mina se arma en (rondas)", self.armado,
-                 "rondas_armado"))):
+        # Arsenal: tres por fila, cada uno con su color e ícono
+        # Izquierda el ataque, derecha la defensa y la mina.
+        ajustes = (
+            ("Daño AMT", self.amt, "ametralladora", CIAN, "bala", ""),
+            ("REPARAR cura", self.reparar, "reparar", VERDE_OK, "cruz",
+             "vida que recupera · 1 uso"),
+            ("Misiles", self.misiles, "misiles", ACENTO, "misil",
+             "por tanque"),
+            ("Escudo absorbe", self.escudo, "escudo", CIAN, "escudo",
+             "daño que detiene"),
+            ("Minas", self.minas, "minas", ROJO_UI, "mina",
+             "por tanque"),
+            ("Armado de mina", self.armado, "rondas_armado", "#C084FC",
+             "reloj", "rondas · 0 = al caer"))
+        self.ajustes = {}
+        for k, (etiqueta, variable, clave, color, simbolo, nota) in \
+                enumerate(ajustes):
             minimo, maximo = RANGOS[clave]
-            self._campo(armas, k % 3, k // 3,
-                        f"{etiqueta}  ({minimo}–{maximo})",
-                        (variable, minimo, maximo))
-        resumen = tk.Frame(armas, bg=PANEL)
-        resumen.grid(row=0, column=2, rowspan=3, sticky="nsew",
-                     padx=(px(6), 0))
-        armas.columnconfigure(2, weight=1)
-        self.medidores = tk.Canvas(resumen, height=px(92), bg=PANEL,
-                                   highlightthickness=0)
-        self.medidores.pack(fill="x")
-        self.derivados = tk.Label(resumen, text="", font=app.f_chico,
-                                  fg=GRIS, bg=PANEL, anchor="w",
-                                  justify="left", wraplength=px(240))
-        self.derivados.pack(fill="x", pady=(px(4), 0))
+            ajuste = Ajuste(armas, app, variable, minimo, maximo,
+                            etiqueta=etiqueta, color=color, simbolo=simbolo,
+                            nota=nota, ancho=210)
+            ajuste.grid(row=k // 2, column=k % 2, sticky="new",
+                        padx=(0 if k % 2 == 0 else px(22), 0),
+                        pady=(0, px(4)))
+            armas.columnconfigure(k % 2, weight=1, uniform="ajuste")
+            self.ajustes[clave] = ajuste
+        # El daño de las demás armas sale del de la ametralladora: va
+        # escrito bajo su ajuste.
+        self.derivados = self.ajustes["ametralladora"].nota
         self.amt.trace_add("write", lambda *_a: self._derivar())
-        self.medidores.bind("<Configure>", lambda _e: self._derivar())
 
         botones = tk.Frame(cuerpo, bg=FONDO_VENTANA)
         botones.pack(fill="x", pady=(px(14), 0))
@@ -1425,12 +2103,13 @@ class PantallaConfiguracion:
         app.boton(botones, "Volver", lambda: app._elegir("volver"),
                   estilo="fantasma", icono="atras", alto=44
                   ).pack(side="right", padx=px(10))
-        app.atajo("<Return>", lambda: app._elegir("iniciar"))
-        app.atajo("<Escape>", lambda: app._elegir("volver"))
+        app.atajo("<Return>", lambda: app._elegir("iniciar"), "confirmar")
+        app.atajo("<Escape>", lambda: app._elegir("volver"), "atras")
 
         for i in range(MAX_TANQUES):
             self._revisar(i)
         self._derivar()
+        self._pintar_tablero()
 
     # ------------------------------------------------------------ armado
     def _ranura(self, rejilla, i, config):
@@ -1489,6 +2168,7 @@ class PantallaConfiguracion:
                   alto=30, ayuda="Cambiar el color"
                   ).pack(side="right", padx=px(6))
         var.trace_add("write", lambda *_a, k=i: self._revisar(k))
+        var.trace_add("write", lambda *_a: self._ajustar_lado())
 
     def _grupo(self, padre, titulo, modo):
         """Panel con rótulo; devuelve el marco interior para los campos."""
@@ -1499,42 +2179,100 @@ class PantallaConfiguracion:
         dentro.pack(fill="both", expand=True, pady=(app.px(6), 0))
         return dentro
 
-    def _campo(self, grupo, fila, columna, etiqueta, *variables):
-        """Etiqueta y uno o más campos: (variable, mínimo, máximo[, paso]).
+    def _alternar_limite(self):
+        """∞ encendido: sin límite de rondas. Apagado: se elige cuántas."""
+        if self.sin_limite.get():
+            self.sin_limite.set(False)
+            self.rondas.set(self._rondas_guardadas)
+        else:
+            if self.rondas.get().strip() not in ("", "0"):
+                self._rondas_guardadas = self.rondas.get().strip()
+            self.sin_limite.set(True)
+            self.rondas.set("0")
+        self._pintar_limite()
 
-        Con mínimo None el campo es libre; si no, una caja con flechas que
-        ya marca el rango permitido.
-        """
-        app = self.app
-        caja = tk.Frame(grupo, bg=PANEL)
-        caja.grid(row=fila, column=columna, sticky="w",
-                  padx=(0, app.px(18)), pady=app.px(3))
-        tk.Label(caja, text=etiqueta, font=app.f_chico, fg=GRIS,
-                 bg=PANEL).pack(anchor="w")
-        linea = tk.Frame(caja, bg=PANEL)
-        linea.pack(anchor="w")
-        for k, (variable, minimo, *resto) in enumerate(variables):
-            if k:
-                tk.Label(linea, text="×", bg=PANEL, fg=GRIS,
-                         font=app.f_texto).pack(side="left", padx=4)
-            if minimo is None:
-                caja_texto = app.campo_texto(linea, variable, ancho=8)
-            else:
-                maximo = resto[0]
-                paso = resto[1] if len(resto) > 1 else 1
-                valor = variable.get()
-                caja_texto = tk.Spinbox(
-                    linea, textvariable=variable, from_=minimo, to=maximo,
-                    increment=paso, width=6, relief="flat", bd=0,
-                    bg=PANEL_ALTO, fg=TINTA, buttonbackground=PANEL_HOVER,
-                    insertbackground=ACENTO, highlightthickness=1,
-                    highlightbackground=BORDE, highlightcolor=ACENTO,
-                    selectbackground=ACENTO, selectforeground=TINTA_ACENTO)
-                # Spinbox reemplaza el texto por `from_` al crearse.
-                variable.set(valor)
-            caja_texto.configure(justify="center", font=app.f_texto)
-            caja_texto.pack(side="left", ipady=app.px(4))
-        return linea
+    def _pintar_limite(self):
+        sin = self.sin_limite.get()
+        if sin:
+            self.rondas.set("0")
+            self.contador_rondas.pack_forget()
+            self.texto_sin_limite.pack(side="left")
+        else:
+            self.texto_sin_limite.pack_forget()
+            self.contador_rondas.pack(side="left")
+        self.boton_limite.estilo = "secundario" if sin else "fantasma"
+        self.boton_limite.ayuda = ("Sin límite: hasta el último tanque en "
+                                   "pie. Clic para poner un límite"
+                                   if sin else
+                                   "Clic para jugar sin límite de rondas")
+        self.boton_limite._dibujar()
+
+    def _alternar_cuadrado(self):
+        self.cuadrado.set(not self.cuadrado.get())
+        if self.cuadrado.get():
+            self.alto.set(self.ancho.get())
+        self._pintar_tablero()
+
+    def _medida(self, lado: int):
+        self.ancho.set(str(lado))
+        self.alto.set(str(lado))
+
+    def _cambio_lado(self, origen, destino):
+        """Con «cuadrado», el otro lado sigue al que se movió."""
+        copiando = getattr(self, "_copiando", False)
+        if (not copiando and self.cuadrado.get()
+                and origen.get() != destino.get()):
+            self._copiando = True
+            try:
+                destino.set(origen.get())
+            finally:
+                self._copiando = False
+        self._pintar_tablero()
+
+    def _pintar_tablero(self):
+        """Miniatura, medidas rápidas y el botón «cuadrado» al día."""
+        if not hasattr(self, "vista_tablero"):
+            return
+        n = sum(1 for v in self.rutas if v.get().strip())
+        minimo = lado_minimo(n)
+
+        def entero(var):
+            try:
+                return int(var.get())
+            except ValueError:
+                return None
+        ancho, alto = entero(self.ancho), entero(self.alto)
+        self.vista_tablero.dibujar(ancho, alto, minimo)
+        for lado, b in self.medidas.items():
+            self.app.activar(b, lado >= minimo)
+            b.estilo = ("secundario" if ancho == alto == lado
+                        else "fantasma")
+            b._dibujar()
+        self.boton_cuadrado.estilo = ("secundario" if self.cuadrado.get()
+                                      else "fantasma")
+        self.boton_cuadrado._dibujar()
+
+    def _ajustar_lado(self):
+        """El tablero crece con el escuadrón: 4 x 4 aguanta hasta 4 tanques
+        y cada tanque más pide una casilla más por lado. Si el tablero
+        queda chico, se agranda solo."""
+        if not hasattr(self, "pista_tablero"):
+            return                          # aún se arma el formulario
+        n = sum(1 for v in self.rutas if v.get().strip())
+        minimo = lado_minimo(n)
+        for ajuste in self.lados.values():
+            ajuste.rango(minimo)
+        for var in (self.ancho, self.alto):
+            try:
+                if int(var.get()) < minimo:
+                    var.set(str(minimo))
+            except ValueError:
+                pass
+        self.pista_tablero.configure(
+            text=f"mínimo {minimo} × {minimo}"
+                 + (f" con {n} tanques" if minimo > TABLERO_MINIMO
+                    else f" (hasta {TABLERO_MINIMO} tanques)"))
+        self._pintar_tablero()
 
     # ------------------------------------------------------------ revisión
     def _ruta(self, texto: str) -> Path:
@@ -1615,35 +2353,17 @@ class PantallaConfiguracion:
                            "\n".join(lineas) + "\n\n" + pie, color)
 
     def _derivar(self):
-        """Medidores del daño de cada arma, derivado de la ametralladora."""
+        """El daño de cada arma sale del de la ametralladora."""
         try:
             amt = int(self.amt.get())
         except ValueError:
-            self.derivados.configure(text="")
+            self.derivados.configure(text="escribe un número entero")
             return
         d = Dano(amt, self.config.dano.choque_tanque,
                  self.config.dano.choque_pared)
         self.derivados.configure(
-            text=f"Con AMT {amt}: misil {d.misil:g} · mina {d.mina:g} · "
-                 f"choque {d.choque_tanque:g} a cada tanque · pared "
-                 f"{d.choque_pared:g}")
-        c, px = self.medidores, self.app.px
-        c.delete("all")
-        w = max(c.winfo_width(), px(220))
-        tope = RANGOS["ametralladora"][1] * 2       # el misil más fuerte
-        for k, (nombre, valor, color) in enumerate((
-                ("AMT", d.ametralladora, CIAN), ("MISIL", d.misil, ACENTO),
-                ("MINA", d.mina, ROJO_UI),
-                ("CHOQUE", d.choque_tanque, GRIS))):
-            y = px(10) + k * px(22)
-            c.create_text(0, y, text=espaciado(nombre), anchor="w",
-                          font=self.app.f_mini, fill=GRIS)
-            x0, x1 = px(70), w - px(40)
-            pildora(c, x0, y - px(4), x1, y + px(4), PANEL_ALTO)
-            pildora(c, x0, y - px(4), x0 + (x1 - x0) * min(1, valor / tope),
-                    y + px(4), color)
-            c.create_text(w, y, text=f"{valor:g}", anchor="e",
-                          font=self.app.f_boton, fill=TINTA)
+            text=f"misil {d.misil:g} · mina {d.mina:g} · choque "
+                 f"{d.choque_tanque:g}")
 
     def _sortear(self):
         self.semilla.set(str(random.randint(1, 99999)))
@@ -1652,7 +2372,6 @@ class PantallaConfiguracion:
         base = Configuracion()
         for var, valor in ((self.ancho, base.tablero.ancho),
                            (self.alto, base.tablero.alto),
-                           (self.rondas, base.rondas_maximas),
                            (self.amt, base.dano.ametralladora),
                            (self.misiles, base.municion.misiles),
                            (self.minas, base.municion.minas),
@@ -1660,6 +2379,10 @@ class PantallaConfiguracion:
                            (self.escudo, base.escudo_puntos),
                            (self.armado, base.mina_rondas_armado)):
             var.set(str(valor))
+        self.sin_limite.set(base.rondas_maximas == 0)
+        if not self.sin_limite.get():
+            self.rondas.set(str(base.rondas_maximas))
+        self._pintar_limite()
 
     # ------------------------------------------------------------------
     def _pintar_muestra(self, i):
@@ -1721,7 +2444,8 @@ class PantallaConfiguracion:
         ancho = entero(self.ancho, "Ancho del tablero")
         alto = entero(self.alto, "Alto del tablero")
         semilla = entero(self.semilla, "Semilla")
-        rondas = entero(self.rondas, "Rondas máximas")
+        rondas = (0 if self.sin_limite.get()
+                  else entero(self.rondas, "Rondas máximas"))
         amt = entero(self.amt, "Daño de la ametralladora")
         misiles = entero(self.misiles, "Misiles")
         minas = entero(self.minas, "Minas")
@@ -1780,7 +2504,15 @@ class VentanaPartida(Vista):
         self._numeros: dict[str, int] = {}
         self._instrucciones: dict[str, str] = {}
         self._tarjetas: dict[str, dict] = {}
+        # Quemaduras que dejan las explosiones: casilla → ronda. Son
+        # decorado: se van borrando con las rondas.
+        self._marcas: dict[tuple[int, int], int] = {}
+        self._fondos: dict[tuple[int, int], str] = {}
+        self._fase = 0
+        self._reanudar = False                 # al cerrarlo, ¿seguía sola?
+        self._terminada = False
         self._armar(velocidad)
+        self._ambiente()
 
     # ---------------------------------------------------------- armado
     def _armar(self, velocidad):
@@ -1801,7 +2533,7 @@ class VentanaPartida(Vista):
         marco.pack(anchor="w")
         ancho, alto = self.config.tablero.ancho, self.config.tablero.alto
         self.celda = max(px(24), min(px(TABLERO_PX) // ancho,
-                                     px(TABLERO_PX) // alto, px(80)))
+                                     px(TABLERO_PX) // alto, px(96)))
         self.margen = px(26)                # para los números de coordenada
         self.canvas = tk.Canvas(
             marco.cuerpo, width=self.margen + ancho * self.celda + px(12),
@@ -1819,25 +2551,28 @@ class VentanaPartida(Vista):
         controles = Panel(izq, app, modo="x", relleno=12)
         controles.pack(fill="x", pady=(px(10), 0))
         c = controles.cuerpo
+        # Cuatro botones del mismo ancho que llenan el panel; lo demás
+        # (configurar, terminar, menú principal, sonido) está en el menú ☰
+        # de arriba a la derecha.
         fila = tk.Frame(c, bg=PANEL)
         fila.pack(fill="x")
         self.botones = {}
-        for texto, senal, simbolo in (("Iniciar", "iniciar", "play"),
-                                      ("Pausar", "pausar", "pausa"),
-                                      ("Una ronda", "una", "paso")):
+        for k, (texto, senal, simbolo) in enumerate((
+                ("Iniciar", "iniciar", "play"),
+                ("Pausar", "pausar", "pausa"),
+                ("Una ronda", "una", "paso"),
+                ("Reiniciar", "reiniciar", "reiniciar"))):
             b = app.boton(fila, texto, lambda s=senal: self.senal(s),
                           primario=senal == "iniciar", icono=simbolo,
-                          ancho=96, alto=40)
-            b.pack(side="left", padx=(0, px(6)))
+                          alto=40,
+                          ayuda="La misma partida desde el principio  (R)"
+                          if senal == "reiniciar" else "")
+            b.grid(row=0, column=k, sticky="ew",
+                   padx=(0 if k == 0 else px(6), 0))
+            fila.columnconfigure(k, weight=1, uniform="control")
             self.botones[senal] = b
-        for senal, simbolo, ayuda in (
-                ("configurar", "engrane", "Configurar  (Esc)"),
-                ("reiniciar", "reiniciar", "Reiniciar la misma partida  (R)")):
-            b = app.boton(fila, "", lambda s=senal: self.senal(s),
-                          icono=simbolo, estilo="fantasma", alto=40,
-                          ancho=40, ayuda=ayuda)
-            b.pack(side="right", padx=(px(6), 0))
-            self.botones[senal] = b
+        self.botones["configurar"] = _Interruptor()
+        app.poner_menu(self)
 
         vel = tk.Frame(c, bg=PANEL)
         vel.pack(fill="x", pady=(px(10), 0))
@@ -1850,19 +2585,23 @@ class VentanaPartida(Vista):
                                   bg=PANEL, anchor="w")
         self.vel_texto.pack(side="left", padx=(px(12), 0))
         self._nombrar_velocidad()
-        tk.Label(c, text="Espacio iniciar/pausar  ·  → una ronda  ·  +/− "
-                 "velocidad  ·  R reiniciar  ·  Esc configurar",
-                 font=app.f_chico, fg=GRIS_CLARO, bg=PANEL, anchor="w"
-                 ).pack(fill="x", pady=(px(8), 0))
-        app.atajo("<space>", self._alternar)
-        app.atajo("<Right>", lambda: self._si_activo("una"))
-        app.atajo("<Key-r>", lambda: self._si_activo("reiniciar"))
-        app.atajo("<Key-R>", lambda: self._si_activo("reiniciar"))
-        app.atajo("<Escape>", lambda: self._si_activo("configurar"))
-        app.atajo("<Key-plus>", lambda: self._acelerar(1))
-        app.atajo("<KP_Add>", lambda: self._acelerar(1))
-        app.atajo("<Key-minus>", lambda: self._acelerar(-1))
-        app.atajo("<KP_Subtract>", lambda: self._acelerar(-1))
+        teclas = tk.Label(c, text="Espacio iniciar/pausar  ·  → ronda  ·  "
+                          "+/− velocidad  ·  R reiniciar  ·  Esc menú",
+                          font=app.f_chico, fg=GRIS_CLARO, bg=PANEL,
+                          anchor="w", justify="left")
+        teclas.pack(fill="x", pady=(px(8), 0))
+        # Se acomoda en dos renglones si el tablero es angosto (4 x 4).
+        teclas.bind("<Configure>", lambda e: teclas.configure(
+            wraplength=max(1, e.width)))
+        app.atajo("<space>", self._alternar, None)
+        app.atajo("<Right>", lambda: self._si_activo("una"), None)
+        app.atajo("<Key-r>", lambda: self._si_activo("reiniciar"), None)
+        app.atajo("<Key-R>", lambda: self._si_activo("reiniciar"), None)
+        app.atajo("<Escape>", self._abrir_menu)
+        app.atajo("<Key-plus>", lambda: self._acelerar(1), "tic")
+        app.atajo("<KP_Add>", lambda: self._acelerar(1), "tic")
+        app.atajo("<Key-minus>", lambda: self._acelerar(-1), "tic")
+        app.atajo("<KP_Subtract>", lambda: self._acelerar(-1), "tic")
 
         # --- derecha: el escuadrón y la bitácora
         der = tk.Frame(cuerpo, bg=FONDO_VENTANA)
@@ -1884,6 +2623,7 @@ class VentanaPartida(Vista):
         app.rotulo(cab, "Bitácora", color=CIAN).pack(side="left")
         self.detalle = tk.BooleanVar(app.root, True)
         tk.Checkbutton(cab, text="ver detalle", variable=self.detalle,
+                       command=lambda: app.sonido.tocar("clic"),
                        font=app.f_chico, fg=GRIS, bg=PANEL,
                        activebackground=PANEL, activeforeground=TINTA,
                        selectcolor=PANEL_ALTO, takefocus=0,
@@ -1914,14 +2654,113 @@ class VentanaPartida(Vista):
 
     # ---------------------------------------------------------- controles
     def _si_activo(self, senal: str):
-        """El atajo solo actúa si el botón correspondiente está activo."""
-        if str(self.botones[senal]["state"]) == "normal":
+        """El atajo solo actúa si el botón correspondiente está activo, y
+        suena como ese botón. Con el submenú abierto, las teclas esperan."""
+        if self._menu is not None:
+            return
+        boton = self.botones[senal]
+        if str(boton["state"]) == "normal":
+            if boton.sonido:
+                self.app.sonido.tocar(boton.sonido)
             self.senal(senal)
+        else:
+            self.app.sonido.tocar("apagado")
+
+    # ---------------------------------------------------------- menú ☰
+    @property
+    def _menu(self):
+        """El menú desplegado, si está abierto."""
+        return self.app._desplegable
+
+    @property
+    def opciones_menu(self) -> dict:
+        return self.app.opciones_menu
+
+    def _abrir_menu(self):
+        """Esc o ☰: abre o cierra el menú de arriba a la derecha."""
+        self.app.alternar_menu()
+
+    def al_abrir_menu(self):
+        """Al abrir el menú la partida se pausa y el tablero se apaga."""
+        if self.accion is not None:
+            return False
+        self._reanudar = self.modo == "auto" and not self._terminada
+        if self._reanudar:
+            self.senal("pausar")
+        c = self.canvas
+        c.create_rectangle(0, 0, int(c["width"]), int(c["height"]),
+                           fill=NOCHE, stipple="gray50", width=0,
+                           tags="velo")
+        return True
+
+    def opciones_del_menu(self):
+        ronda = self._estado.ronda if self._estado else 0
+        estado = ("terminada" if self._terminada
+                  else "en pausa" if ronda else "sin empezar")
+        activo = {s: str(b["state"]) == "normal"
+                  for s, b in self.botones.items()}
+        limite = (f" de {self.config.rondas_maximas}"
+                  if self.config.rondas_maximas else "")
+        return ("Partida", f"Ronda {ronda}{limite}  ·  {estado}", (
+            ("play", "Ver el resultado" if self._terminada else "Continuar",
+             "play", lambda: self.app.cerrar_menu(continuar=True),
+             "primario", True),
+            ("reiniciar", "Reiniciar la partida", "reiniciar",
+             lambda: self._elegir_del_menu("reiniciar"), "secundario",
+             activo["reiniciar"]),
+            ("engrane", "Volver a los tanques", "engrane",
+             lambda: self._elegir_del_menu("configurar"), "secundario",
+             activo["configurar"]),
+            ("bandera", "Terminar la partida aquí", "bandera",
+             lambda: self._elegir_del_menu("terminar"), "secundario",
+             not self._terminada),
+            ("casa", "Menú principal", "casa",
+             lambda: self._elegir_del_menu("menu"), "fantasma", True)))
+
+    def al_cerrar_menu(self, continuar: bool):
+        try:
+            self.canvas.delete("velo")
+        except tk.TclError:
+            pass
+        if continuar and self._reanudar and self.accion is None:
+            self.senal("iniciar")
+        self._reanudar = False
+
+    def _cerrar_menu(self, continuar: bool = False):
+        self.app.cerrar_menu(continuar)
+
+    def _elegir_del_menu(self, accion: str):
+        self.app.cerrar_menu()
+        self.senal(accion)
+
+    def pide_terminar(self) -> bool:
+        return self.accion == "terminar"
+
+    def _ambiente(self):
+        """Lo que se mueve aunque nadie juegue: la luz de las minas
+        armadas late, las refacciones brillan y el escudo gira."""
+        try:
+            if not self.canvas.winfo_exists():
+                return
+            self._fase += 1
+            f = self._fase
+            onda = 0.5 + 0.5 * math.sin(f * 0.35)
+            c = self.canvas
+            c.itemconfigure("led", fill=sprites.mezclar(
+                sprites.MINA_NUCLEO, sprites.MINA_ARMADA, 0.25 + 0.75 * onda))
+            c.itemconfigure("brillo", outline=sprites.mezclar(
+                sprites.REFACCION_CAJA, sprites.REFACCION, 0.45 + 0.55 * onda))
+            c.itemconfigure("escudo", dashoffset=(f * 2) % 12)
+            self.app.root.after(90, self._ambiente)
+        except tk.TclError:
+            return
 
     def _alternar(self):
         self._si_activo("pausar" if self.modo == "auto" else "iniciar")
 
     def _acelerar(self, paso: int):
+        if self._menu is not None:
+            return
         self.velocidad.set(min(10, max(1, self.velocidad.get() + paso)))
         self._nombrar_velocidad()
 
@@ -1990,7 +2829,7 @@ class VentanaPartida(Vista):
                 - self.margen - px(12))
         ancho, alto = self.config.tablero.ancho, self.config.tablero.alto
         celda = max(px(24), min(lado // alto, px(TABLERO_PX) // ancho,
-                                px(TABLERO_PX) // alto, px(80)))
+                                px(TABLERO_PX) // alto, px(96)))
         if celda < self.celda:
             self.celda = celda
             self.canvas.configure(
@@ -2077,14 +2916,35 @@ class VentanaPartida(Vista):
             g = px(5) - k * px(2)
             c.create_rectangle(m - g, m - g, x1 + g, y1 + g, outline=color,
                                width=px(2))
+        # Damero nocturno, más iluminado hacia el centro como bajo un foco.
+        self._fondos = {}
         for y in range(estado.alto):
             for x in range(estado.ancho):
-                fondo = (sprites.FONDO if (x + y) % 2 == 0
-                         else sprites.CASILLA_ALTERNA)
+                base = (sprites.FONDO if (x + y) % 2 == 0
+                        else sprites.CASILLA_ALTERNA)
+                dx = (x + 0.5) / estado.ancho - 0.5
+                dy = (y + 0.5) / estado.alto - 0.5
+                luz = max(0.0, 1 - math.hypot(dx, dy) * 1.5)
+                fondo = sprites.mezclar(base, sprites.LUZ, 0.55 * luz)
+                self._fondos[(x + 1, y + 1)] = fondo
                 c.create_rectangle(m + x * s, m + y * s, m + (x + 1) * s,
                                    m + (y + 1) * s, fill=fondo,
                                    outline=sprites.REJILLA)
-        c.create_rectangle(m, m, x1, y1, outline="#05080C", width=2)
+        # Cruces de mira en las intersecciones de la rejilla
+        cruz = max(2, s * 0.07)
+        for y in range(1, estado.alto):
+            for x in range(1, estado.ancho):
+                ix, iy = m + x * s, m + y * s
+                c.create_line(ix - cruz, iy, ix + cruz + 1, iy,
+                              fill=sprites.MARCA)
+                c.create_line(ix, iy - cruz, ix, iy + cruz + 1,
+                              fill=sprites.MARCA)
+        c.create_rectangle(m, m, x1, y1, outline=sprites.MURO, width=2)
+        for pos, ronda in self._marcas.items():
+            edad = (estado.ronda - ronda) / 25
+            if edad < 1 and pos in self._fondos:
+                sprites.quemadura(c, *self._centro(pos), s,
+                                  self._fondos[pos], 1 - edad, semilla=pos)
         largo, g = px(16), px(6)                 # esquineras doradas
         for cx, cy, dx, dy in ((m, m, 1, 1), (x1, m, -1, 1),
                                (m, y1, 1, -1), (x1, y1, -1, -1)):
@@ -2103,7 +2963,8 @@ class VentanaPartida(Vista):
         for t in estado.tanques:
             if t.vivo:
                 sprites.tanque(c, *centro(t.posicion), s, t.numero, t.color,
-                               t.direccion, t.escudo)
+                               t.direccion, t.escudo,
+                               fondo=self._fondos[t.posicion])
         # Una mina bajo un tanque quedaría tapada: se ve chica en la esquina.
         for mina in estado.minas:
             if mina.posicion in ocupadas:
@@ -2115,7 +2976,9 @@ class VentanaPartida(Vista):
 
         vivos = sum(1 for t in estado.tanques if t.vivo)
         self.app.titulo_barra.configure(
-            text=f"Ronda {estado.ronda}  /  {self.config.rondas_maximas}")
+            text=f"Ronda {estado.ronda}"
+                 + (f"  /  {self.config.rondas_maximas}"
+                    if self.config.rondas_maximas else "  ·  sin límite"))
         self.app.subtitulo_barra.configure(
             text=f"{vivos} de {len(estado.tanques)} en pie   ·   tablero "
                  f"{estado.ancho}×{estado.alto}   ·   semilla "
@@ -2124,7 +2987,12 @@ class VentanaPartida(Vista):
         p.update_idletasks()
         p.delete("all")
         w, h = p.winfo_width(), int(p["height"])
-        lleno = w * min(1, estado.ronda / self.config.rondas_maximas)
+        if self.config.rondas_maximas:
+            lleno = w * min(1, estado.ronda / self.config.rondas_maximas)
+        else:
+            # Sin límite, la barra cuenta los tanques que ya cayeron.
+            caidos = len(estado.tanques) - vivos
+            lleno = w * min(1, caidos / max(1, len(estado.tanques) - 1))
         pasos = 24
         for k in range(pasos):
             p.create_rectangle(lleno * k / pasos, 0, lleno * (k + 1) / pasos
@@ -2272,7 +3140,21 @@ class VentanaPartida(Vista):
                      "aviso_detalle")
         r.configure(state="disabled")
 
+    def _quemaduras(self, eventos, estado):
+        """Anota dónde estalló algo para dejar la marca en el piso."""
+        T = TipoEvento
+        previo = self._estado or estado
+        lugar = {t.nombre: t.posicion for t in previo.tanques}
+        for e in eventos:
+            d = e.datos
+            if e.tipo in (T.MINA_EXPLOTA, T.DESTRUCCION):
+                self._marcas[tuple(d["posicion"])] = estado.ronda
+            elif e.tipo is T.DISPARO and d.get("arma") == "misil" \
+                    and d.get("objetivo") in lugar:
+                self._marcas[lugar[d["objetivo"]]] = estado.ronda
+
     def turno(self, estado, eventos):
+        self._quemaduras(eventos, estado)
         self._anotar(eventos)
         retardo = retardo_ms(self.velocidad.get())
         if retardo >= RETARDO_MIN_ANIMAR and self._estado is not None:
@@ -2286,6 +3168,11 @@ class VentanaPartida(Vista):
         return self._esperar_turno()
 
     def fin(self, estado, resultado):
+        # «Terminar la partida aquí»: el motor ya decidió; ahora se espera
+        # lo que el usuario quiera hacer después, como en cualquier final.
+        if self.accion == "terminar":
+            self.accion = None
+        self._terminada = True
         self._estado = estado
         self._resaltar(None)
         self.dibujar(estado)
@@ -2297,6 +3184,7 @@ class VentanaPartida(Vista):
         else:
             n = self._numeros[resultado.ganador]
             titular = f"Gana el tanque {n} · {resultado.ganador}"
+            self.app.sonido.tocar("victoria")
         detalle = (f"{_MOTIVOS[resultado.motivo]} · "
                    f"{resultado.rondas} rondas")
         r = self.registro
@@ -2308,7 +3196,8 @@ class VentanaPartida(Vista):
         self._cartel(titular, detalle, estado, resultado)
 
     def despues(self) -> str:
-        """Tras el final, espera: 'reiniciar', 'configurar' o 'salir'."""
+        """Tras el final, espera: 'reiniciar', 'configurar', 'menu' (al
+        menú principal) o 'salir'."""
         while self.accion is None:
             self._esperar_senal()
         return self.accion
@@ -2316,7 +3205,7 @@ class VentanaPartida(Vista):
     # ---------------------------------------------------------- control
     def senal(self, valor: str):
         """Lo que hace cada botón; también sirve para las pruebas."""
-        if valor in ("reiniciar", "configurar", "salir"):
+        if valor in ("reiniciar", "configurar", "salir", "menu", "terminar"):
             self.accion = valor
         elif valor == "iniciar":
             self.modo = "auto"
@@ -2371,7 +3260,8 @@ class VentanaPartida(Vista):
 
     # ---------------------------------------------------------- animación
     def _crear_animador(self, factor: float) -> Animador:
-        return Animador(self.canvas, self.celda, self._esperar_ms, factor)
+        return Animador(self.canvas, self.celda, self._esperar_ms, factor,
+                        sonar=self.app.sonido.tocar)
 
     def _reproducir(self, eventos, despues, factor: float) -> bool:
         """Anima los eventos de un turno partiendo del estado anterior."""
@@ -2422,32 +3312,34 @@ class VentanaPartida(Vista):
                                                       pared), alcance=0.5)
         if e.tipo is T.DISPARO and d.get("arma") == "ametralladora":
             blanco = self._centro(casillas[d["objetivo"]])
-            return a.rafaga(aqui, blanco, impacto=True)
+            return a.rafaga(aqui, blanco, impacto=True, etiqueta=tag,
+                            blanco=True)
         if e.tipo is T.SIN_EFECTO and d.get("arma") == "ametralladora":
             pared = self._borde(casillas[quien], Direccion[d["direccion"]])
-            return a.rafaga(aqui, pared, impacto=True)
+            return a.rafaga(aqui, pared, impacto=True, etiqueta=tag)
         if e.tipo is T.DISPARO and d.get("arma") == "misil":
             if "objetivo" in d:
                 destino = self._centro(casillas[d["objetivo"]])
             else:
                 destino = self._borde(casillas[quien],
                                       Direccion[d["direccion"]])
-            return (a.misil(aqui, destino)
+            return (a.misil(aqui, destino, etiqueta=tag)
                     and a.explosion(destino, grande="objetivo" in d))
         if e.tipo is T.DISPARO and d.get("arma") == "choque":
             return a.embestida(tag, aqui,
                                self._centro(casillas[d["objetivo"]]))
         if e.tipo is T.DANO:
-            return a.texto(aqui, f"−{d['puntos']:g}", ROJO)
+            return (a.golpe(tag, aqui)
+                    and a.texto(aqui, f"−{d['puntos']:g}", ROJO))
         if e.tipo is T.BLOQUEO:
-            return (a.anillo(aqui, AZUL, 0.42, 0.62, ms=260)
+            return (a.bloqueo(aqui)
                     and a.texto(aqui, f"−{d['puntos']:g} escudo", AZUL))
         if e.tipo is T.ESCUDO:
-            return a.anillo(aqui, AZUL, 0.15, 0.49, ms=380, guiones=(6, 4))
+            return a.escudo(aqui)
         if e.tipo in (T.REPARACION, T.REFACCION):
             if e.tipo is T.REFACCION:
                 self.canvas.delete(_tag(d["posicion"]))
-            return (a.anillo(aqui, VERDE, 0.2, 0.5, ms=300)
+            return (a.curar(aqui)
                     and a.texto(aqui, f"+{d['puntos']:g}", VERDE))
         if e.tipo is T.RADAR:
             return a.radar(aqui, Direccion[d["direccion"]], d["lectura"])
@@ -2456,15 +3348,19 @@ class VentanaPartida(Vista):
             destino = self._centro(d["posicion"])
             return a.mina_nueva(aqui, destino, escala=1.0)
         if e.tipo is T.MINA_ARMADA:
-            return a.anillo(self._centro(d["posicion"]), ROJO, 0.1, 0.4,
-                            ms=300)
+            return a.mina_armada(self._centro(d["posicion"]))
         if e.tipo is T.MINA_EXPLOTA:
             self.canvas.delete(_tag(d["posicion"]))
             return a.explosion(self._centro(d["posicion"]), grande=True)
         if e.tipo is T.DESTRUCCION:
+            # Una explosión grande y dos réplicas antes del humo
             seguir = a.explosion(aqui, grande=True)
             self.canvas.delete(tag)
             del casillas[quien]
+            s = self.celda
+            for dx, dy in ((0.22, -0.18), (-0.2, 0.2)):
+                seguir = seguir and a.explosion(
+                    (aqui[0] + dx * s, aqui[1] + dy * s), grande=False)
             return seguir and a.humo(aqui)
         if e.tipo is T.CONDICION_FALSA:
             return a.texto(aqui, "✗", "#8A8A8A", ms=380)
@@ -2542,7 +3438,7 @@ class VentanaPartida(Vista):
                           anchor="e", font=app.f_chico,
                           fill=GRIS if t.vivo else ROJO_UI, tags="cartel")
         c.create_text(mx, y1 - px(18),
-                      text="R  jugar otra vez    ·    Esc  configurar",
+                      text="R  jugar otra vez    ·    Esc  menú",
                       font=app.f_chico, fill=GRIS_CLARO, tags="cartel")
 
 
@@ -2559,9 +3455,12 @@ AYUDA = [
          "En cada ronda juegan todos los tanques vivos; el orden gira una "
          "posición en cada ronda para que nadie conserve la ventaja de "
          "actuar primero."),
-    ("", "Gana el último tanque en pie. Si se llega al límite de rondas, "
-         "gana el que más daño haya infligido a sus rivales; si coincide, "
-         "es empate."),
+    ("", "Gana el último tanque en pie. Por omisión no hay límite de "
+         "rondas: la partida sigue hasta que quede uno, y si los tanques se "
+         "quedan dando vueltas, «Terminar la partida aquí» (menú ☰) la "
+         "corta. En la configuración, el botón ∞ apagado deja elegir un "
+         "límite; al llegar a él gana el que más daño haya infligido a sus "
+         "rivales, y si coincide, es empate."),
     ("h", "El programa de un tanque"),
     ("", "Un archivo de texto con una instrucción por línea. Las líneas "
          "vacías se ignoran y # marca un comentario. Al terminar el "
@@ -2592,22 +3491,41 @@ AYUDA = [
          "aún no. La caja verde es un tanque destruido: quien pasa por "
          "encima se repara de 15 a 35 puntos al azar."),
     ("h", "Animaciones"),
-    ("", "Cada turno se anima: un recuadro amarillo marca al tanque que "
+    ("", "Cada turno se anima: esquinas doradas marcan al tanque que "
          "juega; la ametralladora dispara una ráfaga; el misil sube en arco "
          "hasta el primer tanque o la pared y estalla; la mina sale "
          "volando a la esquina; el IF con radar lanza un haz verde que termina en un pulso rojo "
          "si encontró un tanque o gris si llegó a la pared. El daño sube en "
          "rojo (−5), la curación en verde (+20) y lo que el escudo absorbe "
          "en azul. Una ✗ gris es un IF cuya condición fue falsa."),
+    ("", "Los disparos hacen retroceder al tanque, las explosiones "
+         "grandes sacuden el tablero y dejan una quemadura en el piso que "
+         "se borra con las rondas; el tanque que recibe daño destella en "
+         "rojo. Las minas armadas laten y las refacciones brillan."),
+    ("", "Cada arma suena: ráfaga, misil, explosión, motor, choque, radar, "
+         "escudo y reparación. La portada arranca con su fanfarria y luego "
+         "entra la música, una marcha arcade de guerra (metales, bajo, "
+         "guitarra y batería) que sigue en todas las pantallas. El "
+         "radar del título da un pulso; los botones suenan al pasar el ratón "
+         "y al pulsarlos (el dorado confirma, Volver y Salir bajan de "
+         "tono)."),
+    ("", "El sonido se controla desde el menú ☰ de arriba a la derecha, "
+         "en cualquier pantalla: la música y los efectos se encienden y "
+         "apagan por separado, y la música tiene su volumen de 0 a 10 (− y "
+         "+, un clic en las barras o la rueda del ratón)."),
     ("", "Una mina bajo un tanque se ve pequeña en la esquina de su "
          "casilla. En las velocidades 9 y 10 no se anima: avance rápido."),
     ("h", "Configuración"),
     ("", "Cada fila asocia un tanque a su programa y a un color. El aviso de "
          "la derecha revisa el programa al momento: verde si es válido, "
          "rojo con el número de errores; un clic en el aviso rojo los "
-         "muestra. Los valores de armas y defensa tienen flechas que ya "
-         "marcan su rango; «Valores por omisión» los devuelve a los del "
-         "reglamento y «Sortear» elige otra semilla."),
+         "muestra. En «Campo de batalla» la miniatura enseña el tablero "
+         "elegido: ancho y alto con − y +, el eslabón los mantiene "
+         "iguales y los botones 4, 6, 8, 10 y 12 dan medidas rápidas. En "
+         "«Arsenal y defensa» cada valor tiene su color, su rango y una "
+         "pista con perilla: se arrastra, se pulsa − o +, se gira la "
+         "rueda del ratón o se escribe el número. «Valores por omisión» "
+         "los devuelve a los del reglamento y el dado elige otra semilla."),
     ("h", "Teclado"),
     ("m", "Enter        iniciar (menú y configuración)"),
     ("m", "F1           esta ayuda (menú)"),
@@ -2615,7 +3533,14 @@ AYUDA = [
     ("m", "→            una ronda"),
     ("m", "+ / −        más rápido / más lento"),
     ("m", "R            reiniciar la misma partida"),
-    ("m", "Esc          volver a la configuración"),
+    ("m", "Esc          menú ☰ (portada y partida)"),
+    ("h", "Menú de la partida"),
+    ("", "El botón ☰ de arriba a la derecha (o Esc) pausa la partida y "
+         "despliega el menú: Continuar "
+         "(sigue como iba), Reiniciar la partida, Volver a los tanques (la "
+         "configuración), Terminar la partida aquí (gana el tanque en pie "
+         "con más daño infligido, como al llegar al límite de rondas, y se "
+         "ve la clasificación) y Menú principal. Abajo está el sonido."),
     ("h", "Controles"),
     ("", "Iniciar reproduce la partida sola a la velocidad elegida; Pausar "
          "la detiene en el siguiente turno; Una ronda avanza de una en una. "
