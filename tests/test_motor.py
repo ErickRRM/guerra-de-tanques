@@ -15,7 +15,8 @@ from tanques.lenguaje import Interprete, formato_errores
 from tanques.modelo import Direccion, Motivo, Motor, TipoEvento
 
 RAIZ = Path(__file__).resolve().parents[1]
-BASE = cfg.Configuracion()
+# Las pruebas del motor juegan partidas completas solas: con límite.
+BASE = cfg.Configuracion(rondas_maximas=200)
 
 
 def programa(nombre, texto):
@@ -50,8 +51,8 @@ def test_las_posiciones_iniciales_son_distintas_y_dentro():
 
 def test_misma_semilla_misma_partida():
     def partida(semilla):
-        m, errores = preparar(cfg.cargar(RAIZ / "config.json"), RAIZ,
-                              semilla)
+        m, errores = preparar(cfg.con_tope(cfg.cargar(RAIZ / "config.json")),
+                              RAIZ, semilla)
         assert errores == []
         return [str(e) for e in m.jugar()], m.resultado()
 
@@ -80,7 +81,9 @@ def test_el_programa_se_reinicia_al_agotarse():
 
 
 def test_la_configuracion_del_repositorio_arranca():
-    m, errores = preparar(cfg.cargar(RAIZ / "config.json"), RAIZ)
+    # Sin límite de rondas en el repositorio: el tope de seguridad.
+    m, errores = preparar(cfg.con_tope(cfg.cargar(RAIZ / "config.json")),
+                          RAIZ)
     assert errores == []
     m.jugar()
     assert m.terminada()
@@ -633,3 +636,27 @@ def test_el_estado_es_de_solo_lectura():
     with pytest.raises(AttributeError):
         e.tanques[0].vida = 0
     assert e.tanques[0].numero == 1
+
+
+def test_por_omision_no_hay_limite_de_rondas():
+    assert cfg.Configuracion().rondas_maximas == cfg.SIN_LIMITE
+    sin = replace(BASE, rondas_maximas=cfg.SIN_LIMITE)
+    m = motor(("a", "ESPERAR", (1, 1)), ("b", "ESPERAR", (3, 3)), config=sin)
+    for _ in range(600):                 # mucho más que cualquier límite
+        m.ronda()
+    assert not m.terminada()
+    m.terminar_ahora()                   # solo el usuario la corta
+    assert m.resultado().motivo is Motivo.TERMINADA
+
+
+def test_con_limite_se_respeta():
+    m = motor(("a", "ESPERAR", (1, 1)), ("b", "ESPERAR", (3, 3)),
+              rondas_maximas=7)
+    m.jugar()
+    assert m.resultado().rondas == 7
+
+
+def test_el_tope_de_seguridad_solo_cuando_no_hay_limite():
+    assert cfg.con_tope(cfg.Configuracion()).rondas_maximas ==         cfg.TOPE_SIN_VENTANA
+    assert cfg.con_tope(cfg.Configuracion(rondas_maximas=50))         .rondas_maximas == 50
+    assert cfg.desde_diccionario({"rondas_maximas": None}).rondas_maximas         == cfg.SIN_LIMITE

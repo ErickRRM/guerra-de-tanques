@@ -79,14 +79,34 @@ A velocidad 5 cada ronda de cuatro tanques dura unos 4 segundos; entre 7 y
 En la ventana, **Iniciar** reproduce la partida sola a la velocidad elegida,
 **Pausar** la detiene en el siguiente turno, **Una ronda** avanza de una en
 una y **Reiniciar** vuelve a jugar la misma partida, que con la misma
-semilla sale idéntica. **Configurar** regresa al formulario para cambiar
-programas, colores, tablero, semilla, rondas y los valores de armas y
-defensa. Cada partida se guarda en `bitacoras/`.
+semilla sale idéntica. Los cuatro van en una fila bajo el tablero; lo demás
+(volver a la configuración, terminar, ir al menú principal y el sonido) está
+en el menú ☰ de arriba a la derecha. Cada partida se guarda en
+`bitacoras/`.
 
 En el formulario, cada programa se revisa en cuanto se elige: el aviso de
 la fila dice cuántas instrucciones tiene o cuántos errores, y un clic en el
-aviso rojo los muestra. Los valores numéricos tienen flechas con su rango y
-el botón **Valores por omisión** vuelve a los del reglamento.
+aviso rojo los muestra. Abajo hay dos paneles:
+
+- **Campo de batalla**: una miniatura del tablero con su medida; ancho y
+  alto con − y +, un eslabón que los mantiene iguales y medidas rápidas
+  (4, 6, 8, 10 y 12). También el límite de rondas y la semilla (el dado
+  sortea otra). **Por omisión no hay límite**: se juega hasta el último
+  tanque en pie; si los tanques se quedan en un ciclo, *Terminar la partida
+  aquí* (menú ☰) la corta. Con el botón **∞** apagado se elige un límite;
+  al llegar a él gana quien más daño infligió.
+- **Arsenal y defensa**: daño de la ametralladora (con el daño que de ahí
+  sale para misil, mina y choque), misiles, minas, armado de la mina,
+  REPARAR y escudo. Cada uno tiene su color, su rango y una pista con
+  perilla: se arrastra, se pulsa − o +, se gira la rueda del ratón o se
+  escribe el número; si queda fuera del rango, la caja se pone roja.
+
+**Valores por omisión** vuelve a los del reglamento.
+
+El tablero es de **al menos 4 × 4**, que alcanza para 4 tanques; cada tanque
+más pide una casilla más por lado (5 tanques: 5 × 5; 6 tanques: 6 × 6). Al
+agregar un tanque, el formulario agranda el tablero si hace falta y lo dice
+bajo el campo; `config.json` con un tablero más chico no se acepta.
 
 Durante la partida, la tarjeta del tanque que juega se marca con su color,
 la franja azul bajo la vida es el escudo que le queda, y al pasar el ratón
@@ -101,24 +121,63 @@ clasificación.
 | → | una ronda |
 | + / − | más rápido / más lento |
 | R | reiniciar la misma partida |
-| Esc | volver a la configuración |
+| Esc | abre o cierra el menú ☰ (portada y partida) |
 
-Cada turno se anima:
+Cada turno se anima y cada arma suena:
 
-| Acción | Animación |
+| Acción | Animación | Sonido |
+|---|---|---|
+| Turno de un tanque | esquinas doradas; el cañón gira hacia la dirección que usa | |
+| `AMT` | tres balas trazadoras con fogonazo, retroceso y casquillos; chispas donde pega | ráfaga; golpe metálico si pega en un tanque |
+| `MISIL` | fogonazo y humo al salir, el lanzador retrocede; misil en arco con estela y mira giratoria | silbido del misil |
+| Explosión | destello, bola de fuego, ondas, brasas que caen y humo; las grandes sacuden el tablero y dejan una quemadura que se borra con las rondas | explosión (grande o chica) |
+| `MINA` | la mina sale volando del tanque a la esquina; al armarse, su luz parpadea | clic y pitido; doble pitido al armarse |
+| Pisar una mina | explosión grande | explosión |
+| `MOV` | el tanque avanza dejando polvo y la huella de las orugas | motor |
+| Choque | el tanque se lanza contra el otro (o la pared), el tablero tiembla y saltan chispas | motor y golpe de metal |
+| `IF RADAR` | ondas en abanico y un haz verde; pulso rojo si encontró un tanque, gris si es la pared | ping del radar |
+| `ESCUDO` | el hexágono cian se forma girando, con destellos | zumbido de energía |
+| Daño | el tanque destella en rojo y se sacude; la cifra `−5` salta | |
+| Escudo que bloquea | el hexágono destella y se ondula; lo absorbido en azul | zap |
+| `REPARAR`, refacción | cruces verdes que suben; `+20` en verde | campanitas |
+| Destrucción | explosión con dos réplicas y columna de humo; queda la refacción | explosión |
+| Fin de la partida | cartel con la clasificación | fanfarria si hay ganador |
+| `IF` falso | una ✗ gris | |
+
+Entre turnos, las minas armadas laten, las refacciones brillan y el escudo
+gira. La interfaz también suena, con el mismo estilo de consola
+de mando: la portada arranca con un zumbido grave y un acorde dorado, y
+entra la **música**, una marcha original al estilo de los arcades de guerra
+de los noventa: metales en golpes cortos, bajo funky, guitarra con power
+chords y batería con redobles. Sigue en bucle en todas las pantallas,
+también durante la partida. El radar del título da un pulso cada vez
+que pasa por arriba. Los botones hacen un tic al pasar el ratón y suenan al pulsarlos
+según su jerarquía: el dorado confirma, *Volver* y *Salir* bajan de tono, el
+resto hace clic y un botón apagado responde con un zumbido corto. Las teclas
+suenan como el botón que reemplazan.
+
+El sonido se controla solo desde el menú ☰ de arriba a la derecha, en
+cualquier pantalla: **música** y **efectos** (armas, botones) se encienden y
+apagan por separado, y la música tiene su volumen de 0 a 10 (− y +, un clic
+en las barras o la rueda del ratón; subirla la enciende si estaba apagada).
+Los sonidos se sintetizan al arrancar (no hay archivos de audio ni
+dependencias nuevas) y se guardan en la carpeta temporal del sistema. En
+Windows suenan con `winmm`; en macOS y Linux con `afplay`, `paplay` o
+`aplay` si están instalados. Con la variable de entorno
+`TANQUES_SIN_SONIDO=1` el juego queda en silencio.
+
+**Menú de la partida.** El botón ☰ de arriba a la derecha (o Esc) pausa
+la partida y despliega el menú:
+
+| Opción | Qué hace |
 |---|---|
-| Turno de un tanque | recuadro amarillo; el cañón gira hacia la dirección que usa |
-| `AMT` | ráfaga de tres balas trazadoras y chispas donde pega |
-| `MISIL` | misil en arco con estela de humo hasta el primer tanque o la pared, y explosión |
-| `MINA` | la mina sale volando del tanque a la esquina; un pulso rojo al armarse |
-| Pisar una mina | explosión grande |
-| `MOV` | el tanque se desliza; contra la pared, rebota con chispas |
-| Choque | el tanque se lanza contra el otro y regresa |
-| `IF RADAR` | haz verde; pulso rojo si encontró un tanque, gris si es la pared |
-| `ESCUDO` | anillo azul que se expande |
-| Daño, curación, escudo | cifra flotante: `−5` en rojo, `+20` en verde, lo absorbido por el escudo en azul |
-| Destrucción | explosión y humo; queda el tanque destruido, que repara a quien pasa encima |
-| `IF` falso | una ✗ gris |
+| Continuar | cierra el menú; si la partida iba sola, sigue sola |
+| Reiniciar la partida | la misma partida desde el principio |
+| Volver a los tanques | regresa a la configuración |
+| Terminar la partida aquí | la termina tal como está: gana el tanque en pie con más daño infligido (si coinciden, empate), se muestra la clasificación y la bitácora lo registra |
+| Menú principal | regresa a la portada |
+
+Abajo están la música (encendida o apagada, y su volumen) y los efectos.
 
 La velocidad también estira o acorta las animaciones; en las velocidades
 9 y 10 no se anima, para avanzar rápido.
@@ -367,6 +426,11 @@ formen alguna producción de la gramática. La gramática completa está en el
 encabezado de `lenguaje/sintactico.py`.
 
 ## Configuración
+
+`"rondas_maximas": 0` (o `null`) en `config.json` quiere decir **sin
+límite**: la partida sigue hasta que quede un tanque. Como en la consola y
+en el torneo no hay botón para terminarla, ahí se usa un tope de seguridad
+de 1000 rondas (en la consola, `--paso` juega sin tope porque `q` sale).
 
 Todos los parámetros ajustables viven en `config.json`: tamaño del tablero,
 vida, munición, daños, y las cuatro reglas que el reglamento dejaba abiertas

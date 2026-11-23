@@ -47,7 +47,7 @@ def _configurar_y_jugar(app: AppGrafica, config: Configuracion,
         accion, velocidad = "reiniciar", 5
         while accion == "reiniciar":
             accion, velocidad = _jugar(app, config, raiz, velocidad)
-        if accion == "salir":
+        if accion in ("salir", "menu"):          # al menú principal
             break
     return config
 
@@ -68,5 +68,5 @@ def _jugar(app, config, raiz, velocidad) -> tuple[str, int]:
                                               config.semilla), config)
     ejecutar(motor, VistaMultiple(ventana, bitacora))
     accion = ventana.despues()
-    return accion, (ventana.velocidad.get() if accion != "salir"
-                    else velocidad)
+    return accion, (ventana.velocidad.get()
+                    if accion not in ("salir", "menu") else velocidad)

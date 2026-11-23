@@ -40,6 +40,11 @@ class Vista(ABC):
     def fin(self, estado: EstadoJuego, resultado: Resultado) -> None:
         """La partida terminó."""
 
+    def pide_terminar(self) -> bool:
+        """True si el usuario pidió terminar la partida tal como está (y
+        ver el resultado), en vez de abandonarla."""
+        return False
+
 
 class VistaMultiple(Vista):
     """Reparte la partida entre varias vistas, p. ej. consola y bitácora.
@@ -71,3 +76,6 @@ class VistaMultiple(Vista):
     def fin(self, estado, resultado):
         for v in self.vistas:
             v.fin(estado, resultado)
+
+    def pide_terminar(self):
+        return any(v.pide_terminar() for v in self.vistas)

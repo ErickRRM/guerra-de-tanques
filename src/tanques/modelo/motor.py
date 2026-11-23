@@ -39,6 +39,8 @@ class Motivo(Enum):
     DESTRUCCION = "destruccion"     # quedó un solo tanque
     DESEMPATE = "desempate"         # decidió el daño infligido
     EMPATE = "empate"               # el daño infligido coincide
+    TERMINADA = "terminada"         # el usuario la cerró antes; decide el
+                                    # daño infligido entre los vivos
 
 
 @dataclass(frozen=True)
@@ -173,6 +175,20 @@ class Motor:
         self._turno(tanque)
         self._pendientes = [t for t in self._pendientes if t.vivo]
         self._comprobar_fin()
+        return self._tomar_eventos()
+
+    def terminar_ahora(self) -> list[Evento]:
+        """Termina la partida tal como está, a pedido del usuario.
+
+        Gana el tanque vivo con más daño infligido, igual que al llegar al
+        límite de rondas; si coinciden, es empate. Devuelve el evento FIN.
+        """
+        if not self.terminada():
+            vivos = self.registro.vivos() or self.registro.tanques
+            mayor = max(t.dano_infligido for t in vivos)
+            mejores = [t for t in vivos if t.dano_infligido == mayor]
+            self._terminar(mejores[0].nombre if len(mejores) == 1 else None,
+                           Motivo.TERMINADA)
         return self._tomar_eventos()
 
     def ronda(self) -> list[Evento]:
@@ -388,7 +404,7 @@ class Motor:
         elif not vivos:
             # Todos cayeron en el mismo turno: desempatan los últimos.
             self._desempatar(self._muertos_ultimo_turno)
-        elif (not self._pendientes
+        elif (not self._pendientes and self.config.rondas_maximas
               and self.ronda_actual >= self.config.rondas_maximas):
             self._desempatar(vivos)
 
@@ -408,7 +424,11 @@ class Motor:
                             for t in self.registro.tanques})
         texto = {Motivo.DESTRUCCION: f"gana {ganador}: último en pie",
                  Motivo.DESEMPATE: f"gana {ganador} por daño infligido",
-                 Motivo.EMPATE: "empate por daño infligido"}[motivo]
+                 Motivo.EMPATE: "empate por daño infligido",
+                 Motivo.TERMINADA: (
+                     f"terminada en la ronda {self.ronda_actual}; "
+                     + (f"gana {ganador} por daño infligido" if ganador
+                        else "empate por daño infligido"))}[motivo]
         self.emitir(TipoEvento.FIN, f"Fin de la partida: {texto}",
                     ganador=ganador, motivo=motivo.value)
 

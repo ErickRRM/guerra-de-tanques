@@ -1,7 +1,7 @@
 {
   "semilla": 42,
   "tablero": { "ancho": 8, "alto": 8 },
-  "rondas_maximas": 200,
+  "rondas_maximas": 0,
   "vida_inicial": 100,
   "municion": { "minas": 3, "misiles": 3 },
   "dano": {

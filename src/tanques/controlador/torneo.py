@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable, Optional, TextIO
 
-from ..config import Configuracion
+from ..config import Configuracion, con_tope
 from ..lenguaje import ErrorSintaxis
 from ..modelo import Motivo
 from .partida import preparar
@@ -78,7 +78,12 @@ class Torneo:
 def jugar_torneo(config: Configuracion, raiz: str | Path,
                  semillas: Iterable[int],
                  ) -> tuple[Optional[Torneo], list[ErrorSintaxis]]:
-    """Juega una partida por semilla. Si un programa falla, no juega ninguna."""
+    """Juega una partida por semilla. Si un programa falla, no juega ninguna.
+
+    Sin límite de rondas se usa el tope de seguridad: nadie está mirando
+    para terminar a mano una partida que no acaba.
+    """
+    config = con_tope(config)
     torneo = Torneo()
     for semilla in semillas:
         motor, errores = preparar(config, raiz, semilla)

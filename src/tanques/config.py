@@ -17,12 +17,31 @@ docs/DECISIONES.md.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from pathlib import Path
 
 #: Máximo de tanques en una partida.
 MAX_TANQUES = 6
+
+#: Lado mínimo del tablero. Con 4 x 4 caben hasta 4 tanques; cada tanque
+#: más agranda el mínimo una casilla por lado (5 tanques: 5 x 5).
+TABLERO_MINIMO = 4
+
+
+#: `rondas_maximas = SIN_LIMITE`: la partida sigue hasta que quede un solo
+#: tanque en pie. En la ventana, «Terminar la partida aquí» la corta cuando
+#: el usuario quiera; si los tanques se quedan en un ciclo, no pasa nada.
+SIN_LIMITE = 0
+
+#: Lo que nadie puede cortar a mano (un torneo, la consola sin pausas) usa
+#: este tope de seguridad cuando no hay límite.
+TOPE_SIN_VENTANA = 1000
+
+
+def lado_minimo(tanques: int) -> int:
+    """El lado mínimo del tablero para ese número de tanques."""
+    return max(TABLERO_MINIMO, tanques)
 
 #: Usos de REPARAR por tanque y por partida. Fijo por reglamento.
 REPARACIONES_POR_PARTIDA = 1
@@ -115,7 +134,7 @@ class Configuracion:
 
     semilla: int = 42
     tablero: Tablero = field(default_factory=Tablero)
-    rondas_maximas: int = 200
+    rondas_maximas: int = SIN_LIMITE        # 0: hasta el último en pie
     vida_inicial: int = 100
     municion: Municion = field(default_factory=Municion)
     dano: Dano = field(default_factory=Dano)
@@ -133,8 +152,12 @@ class Configuracion:
     def validar(self) -> list[str]:
         """Devuelve los problemas encontrados; vacío si todo es correcto."""
         problemas: list[str] = []
-        if self.tablero.ancho < 2 or self.tablero.alto < 2:
-            problemas.append("el tablero debe tener al menos 2 x 2 casillas")
+        minimo = lado_minimo(len(self.tanques))
+        if self.tablero.ancho < minimo or self.tablero.alto < minimo:
+            problemas.append(
+                f"el tablero debe ser de al menos {minimo} x {minimo}"
+                + (f" con {len(self.tanques)} tanques"
+                   if minimo > TABLERO_MINIMO else ""))
         if len(self.tanques) < 1:
             problemas.append("hace falta al menos un tanque")
         if len(self.tanques) > MAX_TANQUES:
@@ -144,8 +167,9 @@ class Configuracion:
             problemas.append("hay más tanques que casillas en el tablero")
         if self.vida_inicial < 1:
             problemas.append("la vida inicial debe ser positiva")
-        if self.rondas_maximas < 1:
-            problemas.append("el máximo de rondas debe ser positivo")
+        if self.rondas_maximas < 0:
+            problemas.append("el máximo de rondas no puede ser negativo "
+                             "(0 = sin límite)")
         if self.refaccion.minimo < 0:
             problemas.append("la refacción no puede curar menos de 0")
         if self.refaccion.minimo > self.refaccion.maximo:
@@ -197,7 +221,9 @@ def desde_diccionario(datos: dict) -> Configuracion:
     return Configuracion(
         semilla=datos.get("semilla", base.semilla),
         tablero=Tablero(tab.get("ancho", 8), tab.get("alto", 8)),
-        rondas_maximas=datos.get("rondas_maximas", base.rondas_maximas),
+        # null o 0 en el JSON: sin límite de rondas
+        rondas_maximas=datos.get("rondas_maximas", base.rondas_maximas)
+        or SIN_LIMITE,
         vida_inicial=datos.get("vida_inicial", base.vida_inicial),
         municion=Municion(mun.get("minas", base.municion.minas),
                           mun.get("misiles", base.municion.misiles)),
@@ -229,4 +255,16 @@ def cargar(ruta: str | Path) -> Configuracion:
     if problemas:
         detalle = "\n".join(f"  - {p}" for p in problemas)
         raise ValueError(f"{ruta.name} tiene problemas:\n{detalle}")
+    return config
+
+
+def con_tope(config: Configuracion, tope: int = TOPE_SIN_VENTANA
+             ) -> Configuracion:
+    """La misma configuración con un límite de rondas si no lo tenía.
+
+    Para jugar sin nadie que pueda terminar la partida a mano: así un par
+    de tanques que se esquivan para siempre no cuelga el programa.
+    """
+    if config.rondas_maximas == SIN_LIMITE:
+        return replace(config, rondas_maximas=tope)
     return config
