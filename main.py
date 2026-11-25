@@ -26,7 +26,12 @@ from tanques.vista import (VistaBitacora, VistaConsola,   # noqa: E402
                            VistaMultiple)
 from tanques.vista.bitacora import ruta_por_omision   # noqa: E402
 
-RAIZ = Path(__file__).resolve().parent
+# Empaquetado (PyInstaller), la raíz es la carpeta del .exe: ahí van
+# config.json, tanques/ y bitacoras/, que el jugador puede editar.
+if getattr(sys, "frozen", False):
+    RAIZ = Path(sys.executable).resolve().parent
+else:
+    RAIZ = Path(__file__).resolve().parent
 
 
 def _configuracion(ruta: str | None) -> cfg.Configuracion:
@@ -168,7 +173,7 @@ def comando_ventana(args) -> int:
 
 def main(argv=None) -> int:
     # La consola de Windows usa cp1252 y no imprime todos los caracteres.
-    if hasattr(sys.stdout, "reconfigure"):
+    if sys.stdout is not None and hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(
         prog="guerra-de-tanques",
@@ -227,6 +232,10 @@ def main(argv=None) -> int:
     w.set_defaults(func=comando_ventana)
     j.set_defaults(func=comando_jugar)
 
+    if argv is None:
+        argv = sys.argv[1:]
+    if not argv and getattr(sys, "frozen", False):
+        argv = ["ventana"]                 # doble clic en el .exe
     args = parser.parse_args(argv)
     return args.func(args)
 
