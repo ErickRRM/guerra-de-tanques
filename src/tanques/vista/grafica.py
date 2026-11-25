@@ -2693,6 +2693,123 @@ class AppGrafica:
                         font=self.f_mini, fg=color,
                         bg=fondo or _fondo_de(padre))
 
+    def bloque_centrado(self, padre, ancho_maximo: int, margen: int = 24,
+                        con_pie: bool = False):
+        """El marco del contenido de una pantalla. En la ventana normal
+        ocupa lo de siempre; en una grande (pantalla completa) queda
+        centrado y con un ancho máximo, en vez de estirarse a lo ancho y
+        quedarse pegado arriba.
+
+        Nunca pide más alto que el de la pantalla: si el contenido no cabe
+        (pantalla chica o con escala alta), se recorre con la rueda del
+        ratón. Con `con_pie` devuelve también un pie fijo abajo, siempre
+        visible, para los botones de la pantalla: `(bloque, pie)`.
+        """
+        px = self.px
+        mx, my = px(margen), px(12)
+        pie = None
+        if con_pie:
+            tira = tk.Frame(padre, bg=FONDO_VENTANA)
+            tira.pack(side="bottom", fill="x")
+            tira.pack_propagate(False)      # su alto lo fija `acomodar`
+            tk.Frame(tira, bg=BORDE, height=1).pack(fill="x")
+            pie = tk.Frame(tira, bg=FONDO_VENTANA)
+        zona = tk.Frame(padre, bg=FONDO_VENTANA)
+        zona.pack(fill="both", expand=True)
+        bloque = tk.Frame(zona, bg=FONDO_VENTANA)
+        barra = tk.Frame(zona, bg=BORDE, width=px(4))
+        estado = {"bajado": 0, "exceso": 0}
+
+        def acomodar(_e=None):
+            try:
+                req_w = bloque.winfo_reqwidth()
+                req_h = bloque.winfo_reqheight()
+                # Lo que pide la zona es lo natural del contenido (así no
+                # cambia el tamaño de la ventana normal), con el alto de la
+                # pantalla como tope.
+                otros = self.root.winfo_reqheight() - int(zona["height"])
+                tope = max(px(240), self.root.winfo_screenheight()
+                           - px(MARGEN_PANTALLA) - otros)
+                pedido = (req_w + 2 * mx, min(req_h + 2 * my, tope))
+                if (int(zona["width"]), int(zona["height"])) != pedido:
+                    zona.configure(width=pedido[0], height=pedido[1])
+                    self.root.after_idle(self._dentro_de_pantalla)
+                if pie is not None:
+                    alto_pie = pie.winfo_reqheight() + px(10) + my
+                    if int(tira["height"]) != alto_pie:
+                        tira.configure(height=alto_pie)
+                W, H = zona.winfo_width(), zona.winfo_height()
+                if W <= 1:
+                    return
+                ancho = min(W - 2 * mx, max(px(ancho_maximo), req_w))
+                x = (W - ancho) // 2
+                exceso = req_h + 2 * my - H
+                estado["exceso"] = max(0, exceso)
+                if exceso > 0:
+                    bajado = min(max(0, estado["bajado"]), exceso)
+                    estado["bajado"] = bajado
+                    y = my - bajado
+                    total = req_h + 2 * my
+                    alto_barra = max(px(30), H * H // total)
+                    barra.place(x=W - px(6),
+                                y=(H - alto_barra) * bajado // exceso,
+                                width=px(4), height=alto_barra)
+                    barra.lift()
+                else:
+                    estado["bajado"] = 0
+                    y = max(my, (H - req_h) // 2)
+                    barra.place_forget()
+                bloque.place(x=x, y=y, width=ancho)
+                if pie is not None:
+                    pie.place(x=x, y=px(10), width=ancho)
+            except tk.TclError:
+                pass
+
+        def rueda(e):
+            if estado["exceso"] <= 0:
+                return None
+            try:
+                w = e.widget
+                if not str(w).startswith(str(zona)) or \
+                        w.bind("<MouseWheel>"):
+                    return None             # el control usa su rueda
+            except (tk.TclError, AttributeError):
+                return None
+            estado["bajado"] -= (1 if e.delta > 0 else -1) * px(60)
+            acomodar()
+            return "break"
+
+        self.root.bind("<MouseWheel>", rueda)
+        self._atajos.append("<MouseWheel>")
+        zona.bind("<Configure>", acomodar)
+        bloque.bind("<Configure>", acomodar)
+        if pie is not None:
+            pie.bind("<Configure>", acomodar)
+        zona.after_idle(acomodar)
+        return (bloque, pie) if con_pie else bloque
+
+    def _dentro_de_pantalla(self):
+        """Si la ventana (normal, no maximizada) se sale por abajo o por
+        la derecha de la pantalla, la sube para que se vea completa."""
+        root = self.root
+        try:
+            if root.state() != "normal":
+                return
+            root.update_idletasks()
+            x, y = root.winfo_x(), root.winfo_y()
+            w = max(root.winfo_width(), root.winfo_reqwidth())
+            h = max(root.winfo_height(), root.winfo_reqheight())
+            # El marco y la barra de título de Windows más la barra de
+            # tareas: lo que MARGEN_PANTALLA ya reserva.
+            limite_y = root.winfo_screenheight() - self.px(MARGEN_PANTALLA)
+            limite_x = root.winfo_screenwidth() - self.px(16)
+            nx = max(0, min(x, limite_x - w))
+            ny = max(0, min(y, limite_y - h))
+            if (nx, ny) != (x, y):
+                root.geometry(f"+{nx}+{ny}")
+        except tk.TclError:
+            pass
+
     def campo_texto(self, padre, variable, ancho=None) -> tk.Entry:
         e = tk.Entry(padre, textvariable=variable, font=self.f_texto,
                      relief="flat", bd=0, bg=PANEL_ALTO, fg=TINTA,
@@ -2821,7 +2938,14 @@ class AppGrafica:
 
     def _dibujar_portada(self, w, h):
         est = self._portada
-        c, px = est["c"], self.px
+        c = est["c"]
+        # En una pantalla grande el título, el radar y el desfile crecen
+        # con ella (hasta 1.3 veces) y no se quedan chicos en el centro.
+        # Los botones conservan su tamaño y su separación.
+        k = max(1.0, min(w / self.px(1000), h / self.px(680), 1.3))
+
+        def px(medida):
+            return self.px(medida * k)
         c.delete("all")
         cielo_arriba, cielo_abajo = "#0B1626", "#152A44"
         horizonte = h * 0.66
@@ -2855,28 +2979,31 @@ class AppGrafica:
 
         # Título con sombra y resplandor dorado.
         ty = h * 0.2
+        titulo = (self.f_portada[0], round(self.f_portada[1] * k))
         c.create_text(w / 2 + px(4), ty + px(5), text="GUERRA DE TANQUES",
-                      font=self.f_portada, fill="#000000")
+                      font=titulo, fill="#000000")
         for dx, dy in ((-2, 0), (2, 0), (0, -2), (0, 2)):
-            c.create_text(w / 2 + dx, ty + dy, text="GUERRA DE TANQUES",
-                          font=self.f_portada, fill=ACENTO_OSCURO)
+            c.create_text(w / 2 + dx * k, ty + dy * k,
+                          text="GUERRA DE TANQUES", font=titulo,
+                          fill=ACENTO_OSCURO)
         c.create_text(w / 2, ty, text="GUERRA DE TANQUES",
-                      font=self.f_portada, fill=ACENTO)
+                      font=titulo, fill=ACENTO)
         c.create_text(w / 2, ty + px(48),
                       text=espaciado("SIMULADOR DE COMBATE AUTÓNOMO"),
-                      font=self.f_mini, fill=CIAN)
+                      font=(self.f_mini[0], round(self.f_mini[1] * k)),
+                      fill=CIAN)
         c.create_text(w / 2, ty + px(76),
                       text="Programa tu tanque. Míralo pelear.",
-                      font=(self.f_texto[0], 12), fill=GRIS)
+                      font=(self.f_texto[0], round(12 * k)), fill=GRIS)
 
-        y = ty + px(140)
+        y = ty + px(110) + self.px(30)
         for b in est["botones"]:
             fondo = sprites.mezclar(cielo_arriba, cielo_abajo,
                                     min(1, y / horizonte))
             b.configure(bg=fondo)
             c.create_window(w / 2, y, window=b)
-            y += px(56)
-        c.create_text(w / 2, y - px(8),
+            y += self.px(56)
+        c.create_text(w / 2, y - self.px(8),
                       text="Enter  iniciar   ·   F1  ayuda   ·   ☰ / Esc  menú",
                       font=self.f_chico, fill=GRIS_CLARO)
 
@@ -3046,8 +3173,9 @@ class PantallaConfiguracion:
         p = app._nueva_pantalla("Preparar la batalla")
         app.subtitulo_barra.configure(
             text=espaciado("PASO 1  ·  ESCUADRÓN Y REGLAS"))
-        cuerpo = tk.Frame(p, bg=FONDO_VENTANA)
-        cuerpo.pack(fill="both", expand=True, padx=px(24), pady=px(12))
+        cuerpo, pie = app.bloque_centrado(p, ancho_maximo=1440,
+                                          con_pie=True)
+        self.cuerpo = cuerpo
 
         # --- el escuadrón
         cabeza = tk.Frame(cuerpo, bg=FONDO_VENTANA)
@@ -3212,8 +3340,10 @@ class PantallaConfiguracion:
         self.derivados = self.ajustes["ametralladora"].nota
         self.amt.trace_add("write", lambda *_a: self._derivar())
 
-        botones = tk.Frame(cuerpo, bg=FONDO_VENTANA)
-        botones.pack(fill="x", pady=(px(14), 0))
+        # Los botones van en el pie fijo: siempre a la vista, aunque la
+        # pantalla sea chica y el formulario tenga que recorrerse.
+        botones = tk.Frame(pie, bg=FONDO_VENTANA)
+        botones.pack(fill="x")
         app.boton(botones, "Valores por omisión", self._por_omision,
                   icono="reiniciar").pack(side="left")
         app.boton(botones, "INICIAR BATALLA", lambda: app._elegir("iniciar"),
@@ -3668,20 +3798,25 @@ class VentanaPartida(Vista):
         cuerpo = tk.Frame(p, bg=FONDO_VENTANA)
         cuerpo.pack(fill="both", expand=True, padx=px(18), pady=px(12))
 
-        # --- izquierda: el tablero en su panel, y los controles
+        # --- izquierda: el tablero en su panel, y los controles. La zona
+        # pide el tamaño natural (el de siempre), pero al agrandar la
+        # ventana se queda con todo el espacio que sobra: el tablero crece
+        # y va centrado con sus controles (ver `_repartir`).
         izq = tk.Frame(cuerpo, bg=FONDO_VENTANA)
-        izq.pack(side="left", fill="y")
-        marco = Panel(izq, app, modo="ajustar", relleno=10, acento=ACENTO)
-        marco.pack(anchor="w")
+        izq.pack(side="left", fill="both", expand=True)
+        self.zona = izq
+        marco = Panel(izq, app, modo="ambos", relleno=10, acento=ACENTO)
+        self.marco = marco
         ancho, alto = self.config.tablero.ancho, self.config.tablero.alto
         self.celda = max(px(24), min(px(TABLERO_PX) // ancho,
                                      px(TABLERO_PX) // alto, px(96)))
         self.margen = px(26)                # para los números de coordenada
+        self._celda_natural = self.celda    # la de la ventana normal
         self.canvas = tk.Canvas(
             marco.cuerpo, width=self.margen + ancho * self.celda + px(12),
             height=self.margen + alto * self.celda + px(12), bg=PANEL,
             highlightthickness=0)
-        self.canvas.pack()
+        self.canvas.pack(anchor="nw")
         self.canvas.bind("<Motion>", self._sobre)
         self.canvas.bind("<Leave>", self._fuera)
         self._raton: Optional[tuple[int, int]] = None
@@ -3691,7 +3826,7 @@ class VentanaPartida(Vista):
         self._info_por_omision()
 
         controles = Panel(izq, app, modo="x", relleno=12)
-        controles.pack(fill="x", pady=(px(10), 0))
+        self.controles = controles
         c = controles.cuerpo
         # Cuatro botones del mismo ancho que llenan el panel; lo demás
         # (configurar, terminar, menú principal, sonido) está en el menú ☰
@@ -3746,14 +3881,19 @@ class VentanaPartida(Vista):
         app.atajo("<KP_Subtract>", lambda: self._acelerar(-1), "tic")
 
         # --- derecha: el escuadrón y la bitácora
-        der = tk.Frame(cuerpo, bg=FONDO_VENTANA)
-        der.pack(side="left", fill="both", expand=True, padx=(px(16), 0))
+        # No se estira a lo ancho: con la ventana grande crece un poco, pero
+        # el espacio es para el tablero.
+        der = tk.Frame(izq, bg=FONDO_VENTANA)
+        self._der = der
         app.rotulo(der, "Escuadrón").pack(anchor="w")
         # Con cuatro o más tanques las tarjetas van en dos columnas: la
         # columna necesita un ancho mínimo para que quepan.
         self._compacto = len(self.config.tanques) > 3
-        tk.Frame(der, bg=FONDO_VENTANA, height=0,
-                 width=px(520 if self._compacto else 340)).pack()
+        self._ancho_columna = (px(520), px(720)) if self._compacto \
+            else (px(340), px(460))
+        self._columna = tk.Frame(der, bg=FONDO_VENTANA, height=0,
+                                 width=self._ancho_columna[0])
+        self._columna.pack()
         self.panel = tk.Frame(der, bg=FONDO_VENTANA)
         self.panel.pack(fill="x", pady=(px(4), px(8)))
 
@@ -3793,6 +3933,103 @@ class VentanaPartida(Vista):
         self.detalle.trace_add("write", lambda *_a: self.registro.tag_configure(
             "detalle", elide=not self.detalle.get()))
         self._botones_para("pausa")
+        self._medida = None               # (ancho, alto) ya repartidos
+        self._animando = False
+        self._ultimo_cartel = None
+        self._fijar_natural()
+        izq.bind("<Configure>", lambda _e: self._repartir())
+
+    # ---------------------------------------------------------- proporciones
+    # El tablero (con sus controles debajo) y la columna del escuadrón se
+    # colocan con `place` dentro de una sola zona. La zona pide el tamaño de
+    # siempre, así que la ventana normal no cambia; en una ventana grande el
+    # tablero se queda con el espacio que sobra, el escuadrón crece poco y
+    # los dos van juntos y centrados.
+    def _fijar_natural(self):
+        """Mide el tamaño natural de cada parte y lo pide para la zona."""
+        px = self.app.px
+        self.app.root.update_idletasks()
+        p = self.marco.p
+        self._leyenda_alto = self.leyenda.winfo_reqheight() + px(4)
+        lienzo_w, lienzo_h = self._lienzo_natural()
+        ancho = lienzo_w + 2 * p
+        alto = lienzo_h + self._leyenda_alto + 2 * p
+        self._natural = (ancho, alto)
+        columna = self._ancho_columna[0]
+        self.zona.configure(
+            width=ancho + px(16) + columna,
+            height=max(alto + px(10) + self._alto_controles(),
+                       self._der.winfo_reqheight()))
+        self._medida = None
+        self._colocar(ancho, alto, columna)
+
+    def _lienzo_natural(self) -> tuple[int, int]:
+        """El tamaño del lienzo del tablero en la ventana normal."""
+        px, s = self.app.px, self._celda_natural
+        return (self.margen + self.config.tablero.ancho * s + px(12),
+                self.margen + self.config.tablero.alto * s + px(12))
+
+    def _alto_controles(self) -> int:
+        """El alto del panel de controles, esté o no en pantalla."""
+        return self.controles.cuerpo.winfo_reqheight() + 2 * self.controles.p
+
+    def _ancho_escuadron(self, W: int) -> int:
+        """Crece con la ventana, pero poco y con tope."""
+        minimo, maximo = self._ancho_columna
+        return min(maximo, max(minimo, int(W * 0.24)))
+
+    def _colocar(self, ancho_marco: int, alto_marco: int, columna: int):
+        """Tablero y controles a la izquierda, el escuadrón a la derecha;
+        el grupo, centrado en la zona."""
+        px = self.app.px
+        W = max(self.zona.winfo_width(), int(self.zona["width"]))
+        H = max(self.zona.winfo_height(), int(self.zona["height"]))
+        bloque = alto_marco + px(10) + self._alto_controles()
+        x = max(0, (W - (ancho_marco + px(16) + columna)) // 2)
+        y = max(0, (H - bloque) // 2)
+        self.marco.place(x=x, y=y, width=ancho_marco, height=alto_marco)
+        self.controles.place(x=x, y=y + alto_marco + px(10),
+                             width=ancho_marco)
+        self._columna.configure(width=columna)
+        self._der.place(x=x + ancho_marco + px(16), y=0, width=columna,
+                        height=H)
+
+    def _repartir(self):
+        """Al cambiar el tamaño de la ventana, el tablero toma el espacio
+        que haya (celdas de hasta 150 px) y se vuelve a dibujar."""
+        try:
+            W, H = self.zona.winfo_width(), self.zona.winfo_height()
+        except tk.TclError:
+            return
+        if W <= 1 or (W, H) == self._medida:
+            return
+        if self._animando:                 # se termina la jugada primero
+            self.app.root.after(120, self._repartir)
+            return
+        self._medida = (W, H)
+        px = self.app.px
+        p = self.marco.p
+        columna = self._ancho_escuadron(W)
+        ancho, alto = self.config.tablero.ancho, self.config.tablero.alto
+        libre_w = W - px(16) - columna - 2 * p - self.margen - px(12)
+        libre_h = (H - px(10) - self._alto_controles()
+                   - self._leyenda_alto - 2 * p - self.margen - px(12))
+        celda = max(self._celda_natural,
+                    min(libre_w // ancho, libre_h // alto, px(150)))
+        if celda != self.celda:
+            self.celda = celda
+            self.canvas.configure(
+                width=self.margen + ancho * celda + px(12),
+                height=self.margen + alto * celda + px(12))
+            if self._estado is not None:
+                self.dibujar(self._estado, panel=False)
+                if self._ultimo_cartel is not None:
+                    self._cartel(*self._ultimo_cartel)
+        nat_w, nat_h = self._natural
+        self._colocar(
+            max(nat_w, int(self.canvas["width"]) + 2 * p),
+            max(nat_h, int(self.canvas["height"]) + self._leyenda_alto
+                + 2 * p), columna)
 
     # ---------------------------------------------------------- controles
     def _si_activo(self, senal: str):
@@ -3952,18 +4189,18 @@ class VentanaPartida(Vista):
         app = self.app
         px = app.px
         root = app.root
+        self._fijar_natural()             # ya con las tarjetas puestas
         root.update_idletasks()
-        resto = root.winfo_reqheight() - self.canvas.winfo_reqheight()
+        resto = root.winfo_reqheight() - self._lienzo_natural()[1]
         lado = (root.winfo_screenheight() - px(MARGEN_PANTALLA) - resto
                 - self.margen - px(12))
         ancho, alto = self.config.tablero.ancho, self.config.tablero.alto
         celda = max(px(24), min(lado // alto, px(TABLERO_PX) // ancho,
                                 px(TABLERO_PX) // alto, px(96)))
-        if celda < self.celda:
-            self.celda = celda
-            self.canvas.configure(
-                width=self.margen + ancho * celda + px(12),
-                height=self.margen + alto * celda + px(12))
+        if celda < self._celda_natural:
+            self._celda_natural = celda
+            self._fijar_natural()
+        self._repartir()
 
     def _tarjeta(self, t):
         """La tarjeta de un tanque: su dibujo, la vida en segmentos, la
@@ -4411,10 +4648,14 @@ class VentanaPartida(Vista):
         a = self._crear_animador(factor)
         if actor in casillas:
             a.resaltar(self._centro(casillas[actor]))
-        for e in eventos:
-            if not self._animar(a, e, casillas):
-                return False
-        return True
+        self._animando = True
+        try:
+            for e in eventos:
+                if not self._animar(a, e, casillas):
+                    return False
+            return True
+        finally:
+            self._animando = False
 
     def _borde(self, casilla, d: Direccion):
         """Punto de la pared en esa dirección, desde una casilla."""
@@ -4509,6 +4750,7 @@ class VentanaPartida(Vista):
     def _cartel(self, titular: str, detalle: str, estado=None,
                 resultado=None):
         """Cartel final: oscurece el tablero y muestra la clasificación."""
+        self._ultimo_cartel = (titular, detalle, estado, resultado)
         c, app = self.canvas, self.app
         px = app.px
         w, h = int(c["width"]), int(c["height"])

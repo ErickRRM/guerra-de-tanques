@@ -84,6 +84,12 @@ semilla sale idéntica. Los cuatro van en una fila bajo el tablero; lo demás
 en el menú ☰ de arriba a la derecha. Cada partida se guarda en
 `bitacoras/`.
 
+La ventana se puede maximizar o poner en pantalla completa: el tablero
+crece con ella (es lo que más espacio toma) y va centrado junto al
+escuadrón, cuya columna crece poco y tiene tope; la configuración y la
+portada también se centran y se acomodan al tamaño. Al volver a la ventana
+normal todo regresa a su tamaño de siempre.
+
 **Programar un tanque dentro del juego.** El botón **Programar** de cada
 tanque (y **Editar** en el visor de un programa) abre el editor del juego,
 sin pasar por el Bloc de notas:

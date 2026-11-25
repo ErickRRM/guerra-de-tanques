@@ -412,3 +412,43 @@ def test_tablero_cuadrado_y_medidas_rapidas(app):
         pantalla.rutas[i].set("tanques/cazador.txt")
     assert pantalla.medidas[4]["state"] == "disabled"   # no caben 5
     assert pantalla.medidas[6]["state"] == "normal"
+
+
+@requiere_pantalla
+def test_en_pantalla_grande_el_tablero_es_lo_que_crece(app):
+    config, _ = motor_de(("a", "ESPERAR", (1, 1)), ("b", "ESPERAR", (3, 3)),
+                         ("c", "ESPERAR", (5, 5)))
+    v = app.partida(config)
+    app.root.update_idletasks()
+    natural = (app.root.winfo_reqwidth(), app.root.winfo_reqheight())
+    celda = v.celda
+    app.root.deiconify()
+    app.root.geometry("1800x1000+0+0")
+    for _ in range(5):
+        app.root.update()
+    assert v.celda > celda                       # el tablero creció
+    tablero = int(v.canvas["width"])
+    columna = v._der.winfo_width()
+    assert tablero > 1.4 * columna               # y es lo que más resalta
+    assert columna <= app.px(460) + app.px(20)   # el escuadrón tiene tope
+    # El tamaño que pide la ventana no cambió: al volver a la ventana
+    # normal todo regresa a como estaba.
+    assert (app.root.winfo_reqwidth(), app.root.winfo_reqheight()) == natural
+    v.senal("salir")
+
+
+@requiere_pantalla
+def test_la_configuracion_queda_centrada_en_pantalla_grande(app):
+    pantalla = grafica.PantallaConfiguracion(app,
+                                             cfg.cargar(RAIZ / "config.json"))
+    app.root.deiconify()
+    app.root.geometry("1900x1000+0+0")
+    for _ in range(5):
+        app.root.update()
+    bloque = pantalla.cuerpo
+    zona = bloque.master
+    izquierda = bloque.winfo_x()
+    derecha = zona.winfo_width() - izquierda - bloque.winfo_width()
+    assert bloque.winfo_width() <= app.px(1440)
+    assert abs(izquierda - derecha) <= 2
+    assert bloque.winfo_y() > app.px(12)         # centrado también en alto
